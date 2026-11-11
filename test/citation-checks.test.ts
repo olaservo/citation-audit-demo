@@ -61,12 +61,14 @@ test('url policy allows https and rejects other schemes and private hosts', () =
         'https://10.0.0.8/x',
         'https://[::1]/x',
         'https://169.254.169.254/latest',
+        'https://localhost./x',
+        'https://[::ffff:127.0.0.1]/x',
         'not a url'
     ];
     const { messages } = checkUrlPolicy({ citations: urls.map(url => ({ url })) });
     assert.deepEqual(
         messages.map(message => message.path),
-        [1, 2, 3, 4, 5, 6, 7].map(index => `citations[${index}].url`)
+        [1, 2, 3, 4, 5, 6, 7, 8, 9].map(index => `citations[${index}].url`)
     );
 });
 

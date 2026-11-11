@@ -20,7 +20,7 @@ const ANSWERS: Record<string, Answer> = {
     // citation carries a text-fragment URL, and an inline link keyed by `name`.
     'judicial-review': {
         text: [
-            'Judicial review in the United States traces to [Marbury v. Madison, 5 U.S. (1 Cranch) 137 (1803)](' + MARBURY + ').',
+            `Judicial review in the United States traces to [Marbury v. Madison, 5 U.S. (1 Cranch) 137 (1803)](${MARBURY}).`,
             'The Court held that it is "emphatically the province and duty of the judicial department to say what the law is" [c1],',
             'and that a law repugnant to the constitution is void [c2].',
             '',

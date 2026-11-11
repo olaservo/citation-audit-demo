@@ -124,8 +124,14 @@ export interface UrlPolicyConfig {
 }
 
 function isPrivateHost(hostname: string): boolean {
-    const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    const host = hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
     if (host === 'localhost' || /\.(localhost|local|internal)$/.test(host)) return true;
+    // IPv4-mapped IPv6. The URL parser writes ::ffff:127.0.0.1 as ::ffff:7f00:1.
+    const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+    if (mapped) {
+        const [high, low] = [parseInt(mapped[1]!, 16), parseInt(mapped[2]!, 16)];
+        return isPrivateHost(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+    }
     if (isIP(host) === 4) {
         const [a, b] = host.split('.').map(Number) as [number, number];
         return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);

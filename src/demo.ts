@@ -30,19 +30,30 @@ async function connect(name: string, script: string, capabilities: Record<string
     return client;
 }
 
+/** The resolved mode and failOpen, marking values set by an invoker override. */
 function policyOf(outcome: { mode: string; modeSource: string; failOpen: boolean; failOpenSource: string }): string {
-    return `mode=${outcome.mode} (${outcome.modeSource}), failOpen=${outcome.failOpen} (${outcome.failOpenSource})`;
+    const source = (value: string) => (value === 'override' ? ' (override)' : '');
+    return `mode=${outcome.mode}${source(outcome.modeSource)} failOpen=${outcome.failOpen}${source(outcome.failOpenSource)}`;
+}
+
+function row(interceptor: string, verdict: string, ...rest: string[]): string {
+    return `  ${interceptor.padEnd(22)}${verdict.padEnd(18)}${rest.join('  ')}`;
+}
+
+function citationsOf(result: CitedToolResult): Citation[] {
+    return Array.isArray(result.citations) ? (result.citations as Citation[]) : [];
 }
 
 function printValidation(summary: ValidationSummary): void {
     for (const outcome of summary.outcomes) {
         if (outcome.failure) {
-            console.log(`  ${outcome.interceptor}  FAILED  ${policyOf(outcome)}\n      ${outcome.failure}`);
+            console.log(`${row(outcome.interceptor, 'FAILED', policyOf(outcome))}\n      ${outcome.failure}`);
             continue;
         }
         const result = outcome.result!;
         const verdict = result.valid ? (result.severity ? `valid, ${result.severity}` : 'valid') : 'invalid';
-        console.log(`  ${outcome.interceptor}  ${verdict}  ${policyOf(outcome)}  info=${JSON.stringify(result.info)}`);
+        const info = Object.entries(result.info ?? {}).map(([key, value]) => `${key}=${value}`);
+        console.log(row(outcome.interceptor, verdict, policyOf(outcome), info.join(' ')));
         for (const message of result.messages ?? []) {
             console.log(`      ${message.severity.padEnd(5)} ${message.path ?? ''}  ${message.message}`);
         }
@@ -51,17 +62,18 @@ function printValidation(summary: ValidationSummary): void {
 
 function printMutation(summary: MutationSummary): void {
     for (const outcome of summary.outcomes) {
-        const policy = `priority=${outcome.priority}, ${policyOf(outcome)}`;
+        const policy = [policyOf(outcome), `priority=${outcome.priority}`];
         if (outcome.failure) {
-            console.log(`  ${outcome.interceptor}  FAILED  ${policy}\n      ${outcome.failure}`);
+            console.log(`${row(outcome.interceptor, 'FAILED', ...policy)}\n      ${outcome.failure}`);
             continue;
         }
         const result = outcome.result!;
-        const verdict = !result.modified ? 'unchanged' : outcome.applied ? 'modified, applied' : 'modified, not applied (shadow)';
-        console.log(`  ${outcome.interceptor}  ${verdict}  ${policy}`);
+        const verdict = !result.modified ? 'unchanged' : outcome.applied ? 'modified, applied' : 'modified, shadow';
+        console.log(row(outcome.interceptor, verdict, ...policy));
         const stripped = (result.info?.stripped ?? []) as Array<{ index: number; id?: string; name?: string; reasons: string[] }>;
         for (const entry of stripped) {
-            console.log(`      strip citations[${entry.index}] ${entry.id ?? entry.name ?? ''}  ${entry.reasons.join('; ')}`);
+            console.log(`      strip citations[${entry.index}] ${entry.id ?? entry.name ?? ''}`);
+            for (const reason of entry.reasons) console.log(`          ${reason}`);
         }
     }
 }
@@ -80,7 +92,7 @@ const discovered = await discover(interceptorServer, 'tools/call');
 console.log('interceptors/list:');
 for (const interceptor of discovered) {
     const hooks = interceptor.hooks.map(hook => `${hook.events.join(',')}@${hook.phase}`).join(' ');
-    console.log(`  ${interceptor.name}  ${interceptor.type}  ${hooks}  mode=${interceptor.mode ?? 'active'}  failOpen=${interceptor.failOpen ?? false}`);
+    console.log(row(interceptor.name, interceptor.type, hooks, `mode=${interceptor.mode ?? 'active'} failOpen=${interceptor.failOpen ?? false}`));
 }
 
 const CONFIG: Record<string, Record<string, unknown>> = {
@@ -98,7 +110,7 @@ async function run(title: string, topic: string, overrides: Record<string, Inter
     }));
 
     const result = (await research.callTool({ name: 'research', arguments: { topic } })) as CitedToolResult;
-    console.log(`tools/call research(${topic}) returned ${(result.citations as unknown[] | undefined)?.length ?? 0} citations`);
+    console.log(`tools/call research(${topic}) returned ${citationsOf(result).length} citations`);
 
     // Receiving: validate, then mutate only if validation did not block.
     console.log('validate:');
@@ -118,15 +130,15 @@ async function run(title: string, topic: string, overrides: Record<string, Inter
     }
 
     const delivered = mutation.payload as CitedToolResult;
-    const kept = ((delivered.citations ?? []) as Citation[]).map(citation => citation.id ?? citation.name ?? '(no key)').join(', ');
-    console.log(`DELIVERED with ${((delivered.citations ?? []) as unknown[]).length} citations (${kept}).`);
+    const kept = citationsOf(delivered).map(citation => citation.id ?? citation.name ?? '(no key)');
+    console.log(`DELIVERED with ${kept.length} citations (${kept.join(', ')}).`);
     if (mutation.outcomes.some(outcome => outcome.applied)) {
         console.log(delivered.content?.map(block => block.text?.trimEnd()).join('\n').replace(/^/gm, '    | '));
     }
 }
 
 await run('1. Sound citations, server defaults (audit)', 'judicial-review');
-await run('2. Flawed citations, server defaults (audit): findings and the shadow mutation are logged, nothing changes', 'severance');
+await run('2. Flawed citations, server defaults (audit)', 'severance');
 await run('3. Flawed citations, invoker promotes the stripper to active', 'severance', {
     'citation-stripper': { mode: 'active', timeoutMs: 2000 }
 });

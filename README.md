@@ -26,6 +26,26 @@ Requires Node 24 or later.
 
 The Interceptor Server sits beside the host and is not in the path between the host and the research server.
 
+```mermaid
+sequenceDiagram
+    participant H as Host
+    participant R as Research server
+    participant I as Interceptor Server
+    H->>R: tools/call research
+    R-->>H: text and citations
+    par each of the three validators
+        H->>I: interceptor/invoke
+        I-->>H: valid, messages
+    end
+    alt an active validator reports an error
+        Note over H: block with -32602
+    else
+        H->>I: interceptor/invoke citation-stripper
+        I-->>H: modified, payload
+        Note over H: deliver the result
+    end
+```
+
 ## Interceptors
 
 All four hook `tools/call`, phase `response`, and declare `mode: "audit"`.
@@ -50,7 +70,7 @@ The host follows the receiving order from SEP-2624: validate in parallel, then m
 3. The same call with an invoker override that promotes `citation-stripper` to `active`. Three of five citations are stripped and the result is delivered with the remaining two.
 4. The same call with `citation-url-policy` and `citation-quote-check` also promoted to `active`. The result is blocked with `-32602 Interceptor validation failed` and the stripper does not run.
 
-Each line of output records the resolved `mode` and `failOpen` and whether the value came from an override or the declared default, as SEP-2624 "Security Best Practices" asks.
+Each line of output records the resolved `mode` and `failOpen` and marks the values that came from an invoker override, as SEP-2624 "Security Best Practices" asks.
 
 ## Where the demo fills a gap or departs from the SEPs
 
@@ -58,6 +78,7 @@ Each line of output records the resolved `mode` and `failOpen` and whether the v
 - SEP-3094 declares the client capability as a top-level `citations` key in `clientCapabilities`. The SDK drops capability keys it does not know. The demo declares `extensions["io.modelcontextprotocol/citations"] = { render: {} }` instead. The research server omits `citations` when the client does not declare it.
 - The top-level `citations` field on the tool result passes through the SDK on both the server and the client unchanged.
 - `citation-quote-check` reads snapshots from `corpus/` keyed by URL and makes no network requests. The handbook source is fictional.
+- `citation-url-policy` checks the host as written. It does not resolve DNS names, so a public name that resolves to a private address passes.
 - With one mutator, priority ordering and passing each mutation's output to the next are implemented in `src/invoker.ts` but not exercised.
 - The stripper reruns the three checks itself. SEP-2624 gives a mutator no access to validator results, and interceptor state propagation is listed as future work.
 - `src/markdown-links.ts` is a small scanner, not a CommonMark parser. It does not skip code spans.
