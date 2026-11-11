@@ -93,17 +93,13 @@ sequenceDiagram
     participant I as Interceptor Server
     H->>P: tools/call statistics
     P-->>H: text and citations
-    par each of the four validators
-        H->>I: interceptor/invoke
-        I-->>H: valid, messages
-    end
-    alt an active validator reports an error
-        Note over H: block with -32602
-    else
-        H->>I: interceptor/invoke citation-filter
-        I-->>H: modified, payload
-        Note over H: deliver the result
-    end
+    Note over H,I: The four validators run at the same time
+    H->>I: interceptor/invoke, once per validator
+    I-->>H: valid, messages
+    Note over H,I: If an active validator reports an error, the host returns -32602 and stops here
+    H->>I: interceptor/invoke citation-filter
+    I-->>H: modified, payload
+    Note over H: The host delivers the result
 ```
 
 ## Interceptors
