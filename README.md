@@ -1,6 +1,8 @@
 # Citation audit demo
 
-Audits the citations on MCP tool results with interceptors. The scenario is an open data portal: a tool answers a question about official statistics and cites the datasets the figures come from. A host calls the tool, receives a result carrying SEP-3094 citations, and runs four validators and one mutator from an Interceptor Server over it on the `tools/call` response phase before delivering it. The validators report bad citations and the mutator strips them. The host runs in a terminal or inside Claude Code through a mod.
+Checks the citations on MCP tool results before they reach the user. The scenario is an open data portal: a tool answers a question about official statistics and cites the datasets its figures come from, using SEP-3094 citations.
+
+The host calls the tool, then hands the result to an Interceptor Server (SEP-2624) before passing it on. The Interceptor Server runs four validators, which report bad citations, and one mutator, which removes them. The host runs in a terminal or inside Claude Code through a mod.
 
 - Interceptors: the working group draft of [SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2624), `docs/sep.md` at 07c89a2 in [experimental-ext-interceptors](https://github.com/modelcontextprotocol/experimental-ext-interceptors). [Degiorgio/modelcontextprotocol#3](https://github.com/Degiorgio/modelcontextprotocol/pull/3) at 32f00d8 carries the same text.
 - Citations: [SEP-3094](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094) at 109bbfe. The pull request was closed unmerged on 2026-11-08 with a note to pursue citations as an extension.
@@ -33,8 +35,8 @@ This is independent work. OKFN did not write or review it.
 The citations point at real datasets on [data.gov.ie](https://data.gov.ie), Ireland's open data portal, which runs CKAN. The datasets are published by the Central Statistics Office under CC BY 4.0. Everything was retrieved on 2026-11-11.
 
 - `corpus/datasets.json` holds three catalogue records as CKAN's `package_show` returned them, cut down to `name`, `title`, `notes`, the license fields, `organization`, and `metadata_modified`. Each citation's name, license, publisher, and date come from its record.
-- The quarterly unemployment dataset (QLF51) has no extract, so the quote on its citation cannot be checked and is reported as unverified.
 - `corpus/PEA01.txt` and `MUM01.txt` are extracts of the datasets' CSV files: the header and a few rows each. A citation's quoted `text` is one CSV row, and `citation-quote-check` looks for it in the extract.
+- The quarterly unemployment dataset (QLF51) has no extract, so the quote on its citation cannot be checked and is reported as unverified.
 - The demo makes no network requests when it runs. The extracts will go stale as the Central Statistics Office revises its figures.
 
 The `unemployment` answer is partly wrong on purpose so the auditor has something to find. Its two sound citations are real. Every flawed citation is invented: it is about the fictional region of Northmark and points at `data.example.org`, a staging address, or nothing. The invented catalogue records are in `corpus/fictional-datasets.json` and their source texts in `corpus/northmark-*.txt`. No real dataset or publisher is cited for a wrong figure.
@@ -43,13 +45,35 @@ The `inflation` figure is real (CSO table CPM18) and is returned with no citatio
 
 ## Run
 
+Requires Node 24 or later.
+
 ```
+git clone https://github.com/olaservo/citation-audit-demo
+cd citation-audit-demo
 npm install
 npm run demo
 npm test
 ```
 
-Requires Node 24 or later.
+## Reading the audit
+
+Every citation ends the audit in one of three states.
+
+| State | Meaning |
+| --- | --- |
+| `passed` | Every check passed. The citation is delivered. |
+| `flagged` | A check reported an error, and the citation was delivered anyway. This happens in `audit` mode, which only reports, and for a license error in `strip` mode. |
+| `stripped` | A check reported an error, and the citation was removed. The claim it backed stays in the text with no citation. Only `strip` mode removes citations. |
+
+A passed citation that quotes its source also shows what the quote check found:
+
+| Label | Meaning |
+| --- | --- |
+| `verified` | The quoted text is in the auditor's copy of the source. |
+| `unverified` | The auditor has no copy of the source, so the quote was not checked. |
+| `passed` | The citation quotes nothing. |
+
+Each check reports at one of three severities: `error`, `warn`, or `info`. Only an `error` can flag, strip, or block. A whole result is `blocked` when an error comes from a check running in `active` mode. The host then returns error `-32602` and delivers nothing.
 
 ## Processes
 
@@ -132,16 +156,26 @@ The gateway declares citation support to the portal server without `render`, sin
 
 `mods/citation-audit` is a Claude Code mod that makes Claude Code the host. Written against Claude Code 2.1.322.
 
+The mod runs the demo's own code, so it needs a clone with `npm install` done (see "Run"). Start Claude Code in the clone so `.mcp.json` adds the portal server, and load the mod in one of two ways:
+
 ```
+# for this session only
 claude --plugin-dir mods/citation-audit
+
+# or install it from this repo's marketplace, then start claude in the clone
+/plugin marketplace add olaservo/citation-audit-demo
+/plugin install citation-audit@citation-audit-demo
 ```
 
-Start it in this folder so `.mcp.json` adds the portal server. Then ask for statistics on `unemployment`, `population`, or `inflation`. Claude Code's own client declares no citation support, so without the mod it receives the text and no citations.
+The mod runs `src/audit-cli.ts` from the folder Claude Code started in. To start Claude Code somewhere else, set the mod's `demoDir` option to the clone. The portal server must also be in that session's MCP config.
+
+Then ask for statistics on `unemployment`, `population`, or `inflation`. Claude Code's own client declares no citation support, so without the mod it receives the text and no citations.
 
 - A `tool.call` hook answers each `statistics` call by running `src/audit-cli.ts`, which calls the tool as a client that declares citations, runs the interceptors, and prints a report.
-- The model reads the audited text and a note listing the citations kept, stripped, and flagged.
-- A band above the prompt shows the last audit: the counts and one line per citation, with `Details` and `Hide` buttons. A citation that passed every check is drawn with its license, who to credit, its URL, and an `open` button that opens the exact URL in the browser. A narrow window cuts a long URL short in the row, and the button does not depend on what the row shows. No other citation is drawn as a link. An answer with no citations gets a warning line.
-- Each line starts with what the audit found. `verified`: the citation's quote is in the source. `unverified`: it has a quote and the auditor has no copy of the source to check it against. `kept`: it passed and quotes nothing. `flagged` and `stripped`: a check failed.
+- The model reads the audited text and a note listing the citations that passed, were stripped, or were flagged.
+- A band above the prompt shows the last audit: the counts and one line per citation, with `Details` and `Hide` buttons. Each line starts with the citation's state or quote label (see "Reading the audit").
+- Only a passed citation is drawn as a link, with its license, who to credit, and an `open` button. The button opens the exact URL, even when a narrow window cuts the URL short in the row.
+- An answer with no citations gets a warning line.
 - The same lines are drawn under the tool call's row, and the mod unfolds the group of tool calls that holds it.
 - `/citation-audit` opens a pane with the last audit and its findings. `/citation-audit audit`, `strip`, or `block` sets the mode, which maps to scenarios 2, 3, and 4 above. The pane has a button for each mode.
 - In `block` mode the model receives the `-32602` error in place of the result.

@@ -28,7 +28,7 @@ function buildServer(): McpServer {
 
         const { outcome, citations, findings } = report(audit, mode);
         const count = (status: string) => citations.filter(citation => citation.status === status).length;
-        console.error(`[gateway] ${name} ${mode} ${outcome}: ${count('kept')} kept, ${count('stripped')} stripped, ${count('flagged')} flagged`);
+        console.error(`[gateway] ${name} ${mode} ${outcome}: ${count('passed')} passed, ${count('stripped')} stripped, ${count('flagged')} flagged`);
         for (const finding of findings) console.error(`[gateway]   ${finding.severity} ${finding.interceptor} ${finding.path ?? ''} ${finding.message}`);
 
         if (!audit.delivered) throw new ProtocolError(audit.error!.code, audit.error!.message, audit.error!.data);

@@ -8,7 +8,7 @@ const STRIPPED: AuditReport = {
   outcome: 'delivered',
   content: [{ type: 'text', text: 'The rate was 4.8 percent [c1]. Youth unemployment fell.\n\n[c1]: https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment' }],
   citations: [
-    { key: 'c1', name: 'MUM01 - Seasonally Adjusted Monthly Unemployment', url: 'https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment', status: 'kept', quote: 'verified', license: 'CC BY 4.0', credit: 'Central Statistics Office', reasons: [] },
+    { key: 'c1', name: 'MUM01 - Seasonally Adjusted Monthly Unemployment', url: 'https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment', status: 'passed', quote: 'verified', license: 'CC BY 4.0', credit: 'Central Statistics Office', reasons: [] },
     { key: 'c2', name: 'MUM01 - Seasonally Adjusted Monthly Unemployment', url: 'https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment', status: 'stripped', quote: 'not found', reasons: ['quoted text does not appear'] },
   ],
   findings: [{ interceptor: 'citation-quote-check', severity: 'error', path: 'citations[1].text', message: 'quoted text does not appear' }],
@@ -35,11 +35,12 @@ const command = (args: string) => ({ command: 'citation-audit', args }) as Comma
 
 /** Stands in for the engine and for src/audit-cli.ts, which prints `report`. */
 function session(on: On, report: AuditReport, exitCode = 0) {
-  const runs: { argv: readonly string[]; stdin?: string }[] = []
+  const runs: { argv: readonly string[]; cwd?: string; stdin?: string }[] = []
   on('ui.status', () => ({ value: undefined }))
   on('env.get', () => ({ value: 'Windows_NT' }))
+  on('session.cwd', () => ({ value: '/work/citation-audit-demo' }))
   on('process.run', (_, e) => {
-    runs.push({ argv: e.argv, stdin: e.init?.stdin })
+    runs.push({ argv: e.argv, cwd: e.init?.cwd, stdin: e.init?.stdin })
     return { value: { exitCode, stdout: JSON.stringify(report), stderr: 'boom', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   return runs
@@ -50,9 +51,10 @@ test('a statistics call is answered with the audited content and a note for the 
   const ran = await $.tool.call({ tool: 'mcp__portal__statistics', topic: 'unemployment' })
 
   expect(runs[0]?.argv.slice(-2)).toEqual(['src/audit-cli.ts', 'audit'])
+  expect(runs[0]?.cwd).toBe('/work/citation-audit-demo')
   expect(JSON.parse(runs[0]?.stdin ?? '{}')).toEqual({ name: 'statistics', arguments: { topic: 'unemployment' } })
   expect(ran.result).toEqual(STRIPPED.content)
-  expect(ran.context?.[0]).toContain('1 kept, 1 stripped')
+  expect(ran.context?.[0]).toContain('1 passed, 1 stripped')
   expect(ran.context?.[0]).toContain('- [c2] quoted text does not appear')
 })
 
@@ -85,7 +87,7 @@ test('other tools are left alone', async ($, on) => {
   expect(runs.length).toBe(0)
 })
 
-test('the tool row lists the citations and links only a kept one', async ($, on) => {
+test('the tool row lists the citations and links only a passed one', async ($, on) => {
   session(on, STRIPPED)
   await $.tool.call({ tool: 'mcp__portal__statistics', topic: 'unemployment', tool_use_id: 'call-1' })
 
@@ -149,7 +151,7 @@ test('a quote with no copy of its source to check reads as unverified', async ($
   const quoted = { ...STRIPPED.citations[0]!, key: 'c5', quote: 'unverified' as const }
   session(on, { ...STRIPPED, citations: [STRIPPED.citations[0]!, quoted], findings: [] })
   const ran = await $.tool.call({ tool: 'mcp__portal__statistics', topic: 'unemployment', tool_use_id: 'call-3' })
-  expect(ran.context?.[0]).toContain('2 kept (1 unverified)')
+  expect(ran.context?.[0]).toContain('2 passed (1 unverified)')
   expect(ran.context?.[0]).toContain('quote unverified')
 
   const props = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 20, bodyColumns: 80, scroll: { offset: 0, bodyRows: 20 }, view: {} }

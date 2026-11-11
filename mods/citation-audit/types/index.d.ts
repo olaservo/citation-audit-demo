@@ -14,7 +14,7 @@ export type CitationRow = {
   name?: string
   url?: string
   /** `flagged`: a check reported an error and the citation was not removed. */
-  status: 'kept' | 'stripped' | 'flagged'
+  status: 'passed' | 'stripped' | 'flagged'
   quote?: 'verified' | 'not found' | 'unverified'
   /** A short name for the citation's license, such as "CC BY 4.0". */
   license?: string

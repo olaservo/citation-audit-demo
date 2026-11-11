@@ -8,8 +8,8 @@ type Els = ReturnType<EngineInterface['ui']['resolve']>
 
 const PANE = 'citation-audit'
 const MODES: readonly AuditMode[] = ['audit', 'strip', 'block']
-const MARK = { kept: '+', stripped: '-', flagged: '!' } as const
-const COLOR = { kept: 'success', stripped: 'error', flagged: 'warning' } as const
+const MARK = { passed: '+', stripped: '-', flagged: '!' } as const
+const COLOR = { passed: 'success', stripped: 'error', flagged: 'warning' } as const
 
 const mode = atom({ plugin: 'citation-audit', key: 'mode' } as const, null as AuditMode | null)
 const audits = atom({ plugin: 'citation-audit', key: 'audits' } as const, [] as AuditRecord[])
@@ -26,14 +26,26 @@ async function currentMode($: EngineInterface, configured: AuditMode): Promise<A
 
 /** Passed every check that ran, with a quote the auditor had no copy of the source to check. */
 function isUnverified(c: CitationRow): boolean {
-  return c.status === 'kept' && c.quote === 'unverified'
+  return c.status === 'passed' && c.quote === 'unverified'
+}
+
+/** The word a row starts with: the status, or for a passed citation with a quote, what the quote check found. */
+function rowWord(c: CitationRow): string {
+  return c.status === 'passed' && (c.quote === 'verified' || c.quote === 'unverified') ? c.quote : c.status
+}
+
+/** One part per status present, such as "2 passed (1 unverified)" and "3 flagged". */
+function tally(citations: readonly CitationRow[]): { status: CitationRow['status']; text: string }[] {
+  const of = (status: CitationRow['status']) => citations.filter(c => c.status === status).length
+  const unverified = citations.filter(isUnverified).length
+  return [
+    { status: 'passed' as const, text: `${of('passed')} passed${unverified ? ` (${unverified} unverified)` : ''}` },
+    ...(['stripped', 'flagged'] as const).filter(status => of(status)).map(status => ({ status, text: `${of(status)} ${status}` })),
+  ]
 }
 
 function counts(citations: readonly CitationRow[]): string {
-  if (citations.length === 0) return 'no citations'
-  const of = (status: CitationRow['status']) => citations.filter(c => c.status === status).length
-  const unverified = citations.filter(isUnverified).length
-  return [`${of('kept')} kept${unverified ? ` (${unverified} unverified)` : ''}`, ...(of('stripped') ? [`${of('stripped')} stripped`] : []), ...(of('flagged') ? [`${of('flagged')} flagged`] : [])].join(', ')
+  return citations.length === 0 ? 'no citations' : tally(citations).map(part => part.text).join(', ')
 }
 
 function citationLine(c: CitationRow): string {
@@ -42,19 +54,14 @@ function citationLine(c: CitationRow): string {
     .join('  ')
 }
 
-/** "audit · 2 kept, 3 flagged", each count in its status colour. */
+/** "audit · 2 passed, 3 flagged", each count in its status colour. */
 function summary({ Text }: Els, audit: AuditRecord) {
-  const of = (status: CitationRow['status']) => audit.citations.filter(c => c.status === status).length
-  if (audit.outcome === 'blocked') {
-    return [<Text dimColor>{audit.mode} · </Text>, <Text color="error">blocked ({audit.error?.code})</Text>]
-  }
-  if (audit.citations.length === 0) return [<Text dimColor>{audit.mode} · </Text>, <Text color="warning">no citations</Text>]
+  const mode = <Text dimColor>{audit.mode} · </Text>
+  if (audit.outcome === 'blocked') return [mode, <Text color="error">blocked ({audit.error?.code})</Text>]
+  if (audit.citations.length === 0) return [mode, <Text color="warning">no citations</Text>]
   return [
-    <Text dimColor>{audit.mode} · </Text>,
-    <Text color="success">{of('kept')} kept</Text>,
-    ...(audit.citations.some(isUnverified) ? [<Text dimColor> ({audit.citations.filter(isUnverified).length} unverified)</Text>] : []),
-    ...(of('stripped') ? [<Text dimColor>, </Text>, <Text color="error">{of('stripped')} stripped</Text>] : []),
-    ...(of('flagged') ? [<Text dimColor>, </Text>, <Text color="warning">{of('flagged')} flagged</Text>] : []),
+    mode,
+    ...tally(audit.citations).flatMap((part, i) => [...(i > 0 ? [<Text dimColor>, </Text>] : []), <Text color={COLOR[part.status]}>{part.text}</Text>]),
   ]
 }
 
@@ -72,8 +79,6 @@ function shortReason(reasons: readonly string[]): string {
  * passed every check is drawn with a link, after its license and who to
  * credit. The link has no label: a terminal without hyperlinks draws a
  * labelled link as the label and then the URL, which pushed the rest off the row.
- * "verified": its quote is in the source. "unverified": it has a quote and
- * the auditor has no copy of the source. "kept": it quotes nothing.
  * An answer with no citations gets one line saying so.
  */
 function citationRows({ Box, Button, Link, Text }: Els, citations: readonly CitationRow[], open?: (url: string) => void) {
@@ -87,10 +92,10 @@ function citationRows({ Box, Button, Link, Text }: Els, citations: readonly Cita
       </Box>,
     ]
   }
-  const failedFirst = [...citations].sort((a, b) => Number(a.status === 'kept') - Number(b.status === 'kept'))
+  const failedFirst = [...citations].sort((a, b) => Number(a.status === 'passed') - Number(b.status === 'passed'))
   return failedFirst.map((c, i) => {
-    const url = c.status === 'kept' ? c.url : undefined
-    const word = isUnverified(c) ? 'unverified' : c.status === 'kept' && c.quote === 'verified' ? 'verified' : c.status
+    const url = c.status === 'passed' ? c.url : undefined
+    const word = rowWord(c)
     // A citation with no id is keyed by its name: show the name once.
     const key = c.key === c.name ? '' : `[${c.key}]`
     const label = [key, c.name].filter(Boolean).join(' ')
@@ -106,7 +111,7 @@ function citationRows({ Box, Button, Link, Text }: Els, citations: readonly Cita
             <Button key={`open-${i}`} label="open" onPress={() => open(url)} />
           </Box>
         )}
-        {c.status === 'kept' ? (
+        {c.status === 'passed' ? (
           <Text wrap="truncate-end">
             {label}
             <Text dimColor>{[c.license, c.credit].map(part => (part ? ` · ${part}` : '')).join('')}</Text>
@@ -164,7 +169,7 @@ function contextFor(report: AuditReport): string {
   const other = report.findings.filter(f => f.severity !== 'info' && !f.path?.startsWith('citations['))
   return [
     `Citation audit (mode ${report.mode}): ${counts(report.citations)}.`,
-    ...(by('kept').length ? ['Citations delivered with this result:', ...by('kept').map(c => `- ${citationLine(c)}`)] : []),
+    ...(by('passed').length ? ['Citations that passed every check:', ...by('passed').map(c => `- ${citationLine(c)}`)] : []),
     ...(by('stripped').length
       ? ['Removed from the result because a check failed. Those claims are now uncited, so do not present them as sourced:', ...by('stripped').map(withReasons)]
       : []),
@@ -203,7 +208,7 @@ export const register: Register = (on, options) => {
     if (e.tool !== tool) return next(e)
     const { tool: _tool, tool_use_id: id, agentId: _agent, requestMeta: _meta, ...args } = e as unknown as Record<string, unknown> & { tool_use_id: string }
     const current = await currentMode($, configured)
-    const dir = String(options.demoDir || `${$.plugin.root}/../..`)
+    const dir = String(options.demoDir || (await $.session.cwd()))
 
     let report: AuditReport
     try {
@@ -212,8 +217,8 @@ export const register: Register = (on, options) => {
       return { deny: `citation-audit: the audit could not run: ${err instanceof Error ? err.message : String(err)}` }
     }
 
-    const { content, ...kept } = report
-    await update($, audits, list => [...list, { ...kept, id, topic: String(args.topic ?? '') }].slice(-50))
+    const { content, ...record } = report
+    await update($, audits, list => [...list, { ...record, id, topic: String(args.topic ?? '') }].slice(-50))
     await update($, hidden, () => null)
     $.ui.status(`${current} · ${report.outcome === 'blocked' ? 'blocked' : counts(report.citations)}`)
 

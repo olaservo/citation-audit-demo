@@ -134,7 +134,7 @@ export interface CitationRow {
     name?: string;
     url?: string;
     /** `flagged`: a check reported an error and the citation was not removed. */
-    status: 'kept' | 'stripped' | 'flagged';
+    status: 'passed' | 'stripped' | 'flagged';
     quote?: 'verified' | 'not found' | 'unverified';
     /** A short name for the citation's `license`, such as "CC BY 4.0". */
     license?: string;
@@ -172,14 +172,14 @@ export function report(audit: Audit, mode: Mode): AuditReport {
     const quoteChecked = audit.validation.outcomes.some(outcome => outcome.interceptor === 'citation-quote-check' && outcome.result);
 
     const citations = listCitations(audit.result).map(({ index, key, name, url, quote, license, credit }): CitationRow => {
-        const own = findings.filter(finding => new RegExp(`^citations\\[${index}\\]`).test(finding.path ?? ''));
+        const own = findings.filter(finding => finding.path?.startsWith(`citations[${index}]`));
         const reasons = own.filter(finding => finding.severity === 'error').map(finding => finding.message);
         const quoteFinding = own.find(finding => finding.path === `citations[${index}].text`);
         return {
             key,
             ...(name && { name }),
             ...(url && { url }),
-            status: stripped.has(index) ? 'stripped' : reasons.length > 0 ? 'flagged' : 'kept',
+            status: stripped.has(index) ? 'stripped' : reasons.length > 0 ? 'flagged' : 'passed',
             ...(quote && quoteChecked && { quote: !quoteFinding ? 'verified' : quoteFinding.severity === 'error' ? 'not found' : 'unverified' }),
             ...(license && { license: licenseLabel(license) }),
             ...(credit && { credit }),

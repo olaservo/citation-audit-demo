@@ -20,7 +20,7 @@
     "demoDir": {
       "type": "string",
       "title": "citation-audit-demo checkout",
-      "description": "Folder holding src/audit-cli.ts; empty: two levels above this mod",
+      "description": "Your clone of citation-audit-demo, which holds src/audit-cli.ts. Leave empty to use the folder Claude Code was started in",
       "default": ""
     }
   }
