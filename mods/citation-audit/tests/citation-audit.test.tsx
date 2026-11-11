@@ -88,11 +88,34 @@ test('the tool row lists the citations and links only a kept one', async ($, on)
       surface,
       props: { tool_use_id: 'call-1', tool: 'mcp__research__research', input: { topic: 'severance' }, isRunning: false, isErrored: false, isInterrupted: false },
     })
-    expect((await ui.find({ type: 'Text', text: /^citations/ }))?.text).toContain('strip · 1 kept, 1 stripped')
+    expect((await ui.find({ type: 'Text', text: /^citations/ }))?.text).toContain('citations')
+    expect((await ui.find({ type: 'Text', text: /stripped$/ }))?.text).toBe('1 stripped')
     expect((await ui.find({ type: 'Link' }))?.props.href).toBe('https://handbook.example.com/a')
     expect((await ui.find({ type: 'Text', text: /stripped: / }))?.text).toContain('quoted text does not appear')
     await ui.unmount()
   }
+})
+
+test('the band above the prompt shows the last audit until it is hidden', async ($, on) => {
+  session(on, STRIPPED)
+  const props = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 20, bodyColumns: 80, scroll: { offset: 0, bodyRows: 20 }, view: {} }
+  const mount = () => $.ui.mount({ plugin: 'citation-audit', component: 'AbovePrompt', surface: 'terminal', props })
+
+  let ui = await mount()
+  expect(await ui.find({ type: 'Text', text: /Citation audit/ })).toBeUndefined()
+  await ui.unmount()
+
+  await $.tool.call({ tool: 'mcp__research__research', topic: 'severance', tool_use_id: 'call-1' })
+  ui = await mount()
+  expect((await ui.find({ type: 'Text', text: /research\(severance\)/ }))?.text).toContain('research(severance)')
+  expect((await ui.find({ type: 'Text', text: /stripped$/ }))?.text).toBe('1 stripped')
+  expect((await ui.find({ type: 'Link' }))?.props.href).toBe('https://handbook.example.com/a')
+  await ui.press({ key: 'hide' })
+  await ui.unmount()
+
+  ui = await mount()
+  expect(await ui.find({ type: 'Text', text: /Citation audit/ })).toBeUndefined()
+  await ui.unmount()
 })
 
 test('the pane lists the last audit, on every surface', async ($, on) => {

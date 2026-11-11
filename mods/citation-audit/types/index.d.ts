@@ -39,6 +39,8 @@ declare module 'claude-code' {
       /** The mode set with /citation-audit; null: the configured one. */
       mode: AuditMode | null
       audits: AuditRecord[]
+      /** The id of the audit whose band the person hid. */
+      hidden: string | null
     }
   }
 }

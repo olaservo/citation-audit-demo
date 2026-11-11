@@ -86,7 +86,8 @@ Start it in this folder so `.mcp.json` adds the research server. Then ask for re
 
 - A `tool.call` hook answers each `research` call by running `src/audit-cli.ts`, which calls the tool as a client that declares citations, runs the interceptors, and prints a report.
 - The model reads the audited text and a note listing the citations kept, stripped, and flagged.
-- The citations are drawn under the tool call's row. Only a citation that passed every check is drawn as a link.
+- A band above the prompt shows the last audit: the counts and one line per citation, with `Details` and `Hide` buttons. Only a citation that passed every check is drawn as a link.
+- The same lines are drawn under the tool call's row, and the mod unfolds the group of tool calls that holds it.
 - `/citation-audit` opens a pane with the last audit and its findings. `/citation-audit audit`, `strip`, or `block` sets the mode, which maps to scenarios 2, 3, and 4 above. The pane has a button for each mode.
 - In `block` mode the model receives the `-32602` error in place of the result.
 

@@ -3,6 +3,9 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { AuditMode, AuditRecord, AuditReport, CitationRow } from '../types'
 
+/** A drawing surface's elements, as `$.ui.resolve` hands them. */
+type Els = ReturnType<EngineInterface['ui']['resolve']>
+
 const PANE = 'citation-audit'
 const MODES: readonly AuditMode[] = ['audit', 'strip', 'block']
 const MARK = { kept: '+', stripped: '-', flagged: '!' } as const
@@ -10,6 +13,7 @@ const COLOR = { kept: 'success', stripped: 'error', flagged: 'warning' } as cons
 
 const mode = atom({ plugin: 'citation-audit', key: 'mode' } as const, null as AuditMode | null)
 const audits = atom({ plugin: 'citation-audit', key: 'audits' } as const, [] as AuditRecord[])
+const hidden = atom({ plugin: 'citation-audit', key: 'hidden' } as const, null as string | null)
 
 function isMode(value: unknown): value is AuditMode {
   return MODES.includes(value as AuditMode)
@@ -27,6 +31,33 @@ function counts(citations: readonly CitationRow[]): string {
 
 function citationLine(c: CitationRow): string {
   return [`[${c.key}]`, c.name, c.url, c.quote && `quote ${c.quote}`].filter(Boolean).join('  ')
+}
+
+/** "audit · 2 kept, 3 flagged", each count in its status colour. */
+function summary({ Text }: Els, audit: AuditRecord) {
+  const of = (status: CitationRow['status']) => audit.citations.filter(c => c.status === status).length
+  if (audit.outcome === 'blocked') {
+    return [<Text dimColor>{audit.mode} · </Text>, <Text color="error">blocked ({audit.error?.code})</Text>]
+  }
+  return [
+    <Text dimColor>{audit.mode} · </Text>,
+    <Text color="success">{of('kept')} kept</Text>,
+    ...(of('stripped') ? [<Text dimColor>, </Text>, <Text color="error">{of('stripped')} stripped</Text>] : []),
+    ...(of('flagged') ? [<Text dimColor>, </Text>, <Text color="warning">{of('flagged')} flagged</Text>] : []),
+  ]
+}
+
+/** One line per citation. Only one that passed every check is drawn as a link. */
+function citationRows({ Box, Link, Text }: Els, citations: readonly CitationRow[]) {
+  return citations.map(c => (
+    <Box>
+      <Text color={COLOR[c.status]}>{MARK[c.status]} </Text>
+      {c.status === 'kept' && c.url ? <Link href={c.url} label={`[${c.key}] ${c.name ?? c.url}`} /> : <Text>{`[${c.key}] ${c.name ?? ''}`}</Text>}
+      <Text dimColor wrap="truncate-end">
+        {c.status === 'kept' ? (c.quote ? `  quote ${c.quote}` : '') : `  ${c.status}: ${c.reasons[0] ?? ''}`}
+      </Text>
+    </Box>
+  ))
 }
 
 /**
@@ -68,7 +99,7 @@ export const register: Register = (on, options) => {
       description: 'Show the citation audits in a pane, or set the mode',
       argumentHint: '[audit|strip|block]',
     })
-    $.ui.status(`citations: ${await currentMode($, configured)}`)
+    $.ui.status(await currentMode($, configured))
     return next(e)
   })
 
@@ -80,7 +111,7 @@ export const register: Register = (on, options) => {
     }
     if (!isMode(wanted)) return { text: `Unknown mode "${wanted}". Use audit, strip, or block.` }
     await update($, mode, () => wanted)
-    $.ui.status(`citations: ${wanted}`)
+    $.ui.status(wanted)
     return { text: `Citation audit mode: ${wanted}.` }
   })
 
@@ -99,7 +130,8 @@ export const register: Register = (on, options) => {
 
     const { content, ...kept } = report
     await update($, audits, list => [...list, { ...kept, id, topic: String(args.topic ?? '') }].slice(-50))
-    $.ui.status(`citations: ${current} · ${report.outcome === 'blocked' ? 'blocked' : counts(report.citations)}`)
+    await update($, hidden, () => null)
+    $.ui.status(`${current} · ${report.outcome === 'blocked' ? 'blocked' : counts(report.citations)}`)
 
     if (report.outcome === 'blocked' || !content) {
       const { code, message, reasons } = report.error ?? { code: 0, message: 'Blocked', reasons: [] }
@@ -113,23 +145,47 @@ export const register: Register = (on, options) => {
     const row = await next(e)
     const audit = (await read($, audits)).find(a => a.id === e.requestId)
     if (!audit) return row
-    const { Box, Link, Text } = $.ui.resolve(e)
+    const els = $.ui.resolve(e)
+    const { Box, Text } = els
 
     return (
       <Box flexDirection="column">
         {row}
         <Box flexDirection="column" marginLeft={2}>
-          <Text dimColor>
-            citations · {audit.mode} · {audit.outcome === 'blocked' ? `blocked (${audit.error?.code})` : counts(audit.citations)}
-          </Text>
-          {audit.citations.map(c => (
-            <Box>
-              <Text color={COLOR[c.status]}>{MARK[c.status]} </Text>
-              {/* Only a citation that passed every check is drawn as a link. */}
-              {c.status === 'kept' && c.url ? <Link href={c.url} label={`[${c.key}] ${c.name ?? c.url}`} /> : <Text>{`[${c.key}] ${c.name ?? ''}`}</Text>}
-              <Text dimColor>{c.status === 'kept' ? (c.quote ? `  quote ${c.quote}` : '') : `  ${c.status}: ${c.reasons[0] ?? ''}`}</Text>
-            </Box>
-          ))}
+          <Box>
+            <Text dimColor>citations · </Text>
+            {summary(els, audit)}
+          </Box>
+          {citationRows(els, audit.citations)}
+        </Box>
+      </Box>
+    )
+  })
+
+  // The transcript folds finished calls into one count line. Unfold a group
+  // that holds a research call, so its row and citations stay on screen.
+  on('ui.render', { component: 'ToolGroup' }, ($, e, next) =>
+    e.props.calls.some(c => c.tool === tool) ? next({ ...e, props: { ...e.props, isExpanded: true } }) : next(e),
+  )
+
+  // The last audit, above the prompt until the person hides it.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const last = (await read($, audits)).at(-1)
+    if (e.props.hasSurvey || !last || (await read($, hidden)) === last.id) return next(e)
+    const els = $.ui.resolve(e)
+    const { Box, Button, Text } = els
+
+    return (
+      <Box flexDirection="column">
+        <Box>
+          <Text bold>Citation audit </Text>
+          <Text dimColor>research({last.topic}) · </Text>
+          {summary(els, last)}
+        </Box>
+        {citationRows(els, last.citations)}
+        <Box>
+          <Button key="details" label="Details" onPress={() => $.ui.open({ id: PANE, title: 'Citation audit' })} />
+          <Button key="hide" label="Hide" onPress={() => update($, hidden, () => last.id)} />
         </Box>
       </Box>
     )
