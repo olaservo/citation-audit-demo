@@ -10,15 +10,15 @@ The host calls the tool, then hands the result to an Interceptor Server (SEP-262
 
 ## Why open data
 
-The scenario follows a use case the [Open Knowledge Foundation](https://okfn.org) (OKFN), which maintains CKAN, brought to the MCP contributors Discord in September 2026 and to the [discussion on SEP-3094](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#issuecomment-5522484672). OKFN is exploring MCP for open data and public information. Their goal is traceable, attributable answers: asked for the unemployment rate of a place, the answer links to the source dataset on an open data portal.
+The scenario follows a use case the [Open Knowledge Foundation](https://okfn.org) (OKFN), which maintains CKAN, raised in the [discussion on SEP-3094](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#issuecomment-5522484672). OKFN works on open data and public information. Their server is at [okfn/mcp-server](https://github.com/okfn/mcp-server) and their demo at [mcp.okfn.org](https://mcp.okfn.org/).
 
-The reasons they give:
+The reasons they give in that discussion:
 
-- Open licenses permit reuse on condition of attribution, and share-alike licenses add terms for modified content ([review comment](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#discussion_r4376650397)).
-- Public institutions, government statistics bodies, and galleries, libraries, archives, and museums are funded on the visibility and impact of their work. Data producers and the Commons community want attribution too.
-- Citations let a consumer ask a server for answers that can be verified.
+- Open licenses can make attribution a legal requirement of reuse, and share-alike licenses add terms for modified content ([review comment](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#discussion_r4376650397)).
+- Public institutions, government statistics bodies, and galleries, libraries, archives, and museums depend on the visibility of their work for funding. Data producers and the Commons community want attribution too.
+- Attribution helps sustain the free knowledge ecosystem, and is not only a way for a consumer to verify an answer ([review comment](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#discussion_r4376759099)).
 
-They reported that they could not steer the model to keep the attribution, that what the user sees depends on each client's frontend and prompt, and that they found no way to enforce it from the protocol side. Their server is at [okfn/mcp-server](https://github.com/okfn/mcp-server) and their demo at [mcp.okfn.org](https://mcp.okfn.org/).
+They supported a call for empirical data on how well models keep citations through prompting alone, and asked whether clients could be "more compliant by design".
 
 The demo implements the three behaviours those comments ask about:
 
