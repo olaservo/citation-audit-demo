@@ -18,8 +18,10 @@ interface Parsed {
     messages: ValidationMessage[];
 }
 
+const STRING_FIELDS = ['id', 'name', 'url', 'text', 'description', 'thumbnailUrl', 'datePublished', 'display'] as const;
+
 function parse(result: CitedToolResult): Parsed {
-    const text = (result.content ?? [])
+    const text = (Array.isArray(result.content) ? result.content : [])
         .filter(block => block.type === 'text' && typeof block.text === 'string')
         .map(block => block.text)
         .join('\n\n');
@@ -31,21 +33,55 @@ function parse(result: CitedToolResult): Parsed {
         return parsed;
     }
     result.citations.forEach((entry, index) => {
-        if (entry !== null && typeof entry === 'object' && !Array.isArray(entry)) {
-            parsed.citations.push({ index, citation: entry as Citation });
-        } else {
-            parsed.messages.push({ path: `citations[${index}]`, message: 'citation must be an object', severity: 'error' });
+        const path = `citations[${index}]`;
+        if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+            parsed.messages.push({ path, message: 'citation must be an object', severity: 'error' });
+            return;
         }
+        const wrong = STRING_FIELDS.filter(field => field in entry && typeof (entry as Record<string, unknown>)[field] !== 'string');
+        if (wrong.length > 0) {
+            parsed.messages.push({ path, message: `${wrong.map(field => `\`${field}\``).join(', ')} must be a string`, severity: 'error' });
+            return;
+        }
+        parsed.citations.push({ index, citation: entry as Citation });
     });
     return parsed;
 }
 
-/** The destination a client would open: `citations` wins over the markdown link. */
-function destination(citation: Citation, links: ParsedLinks): string | undefined {
-    if (citation.url) return citation.url;
+/** The destination of the markdown link a citation is bound to, if any. */
+function markdownDestination(citation: Citation, links: ParsedLinks): string | undefined {
     if (citation.id) return links.definitions.get(normalizeLabel(citation.id));
     if (citation.name) return links.inline.find(link => link.text === citation.name)?.url;
     return undefined;
+}
+
+/** The destination a client would open: `citations` wins over the markdown link. */
+function destination(citation: Citation, links: ParsedLinks): string | undefined {
+    return citation.url || markdownDestination(citation, links);
+}
+
+export interface CitationInfo {
+    index: number;
+    /** The citation's `id`, else its `name`, else its index. */
+    key: string;
+    name?: string;
+    url?: string;
+    quote?: string;
+}
+
+/** One entry per citation object, with the destination a client would open. */
+export function listCitations(result: CitedToolResult): CitationInfo[] {
+    const { links, citations } = parse(result);
+    return citations.map(({ index, citation }) => {
+        const url = destination(citation, links);
+        return {
+            index,
+            key: citation.id ?? citation.name ?? `#${index}`,
+            ...(citation.name && { name: citation.name }),
+            ...(url && { url }),
+            ...(citation.text && { quote: citation.text })
+        };
+    });
 }
 
 /** `c1` and `c12` share the shape `cN`. Used to spot markers that look like citation ids. */
@@ -78,7 +114,8 @@ export function checkBinding(result: CitedToolResult): CheckOutput {
         const label = normalizeLabel(citation.id);
         const first = ids.get(label);
         if (first !== undefined) {
-            messages.push({ path: `${path}.id`, message: `duplicate id "${citation.id}" (also citations[${first}])`, severity: 'error' });
+            // SEP-3094 has no uniqueness rule for `id`, so this does not strip.
+            messages.push({ path: `${path}.id`, message: `duplicate id "${citation.id}" (also citations[${first}])`, severity: 'warn' });
             continue;
         }
         ids.set(label, index);
@@ -95,7 +132,7 @@ export function checkBinding(result: CitedToolResult): CheckOutput {
             messages.push({
                 path,
                 message: `no destination for "${citation.id}": no \`url\` and no [${citation.id}]: link definition`,
-                severity: 'error'
+                severity: 'warn'
             });
         }
         if (citation.url && definition && citation.url.split('#')[0] !== definition.split('#')[0]) {
@@ -126,18 +163,28 @@ export interface UrlPolicyConfig {
 function isPrivateHost(hostname: string): boolean {
     const host = hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
     if (host === 'localhost' || /\.(localhost|local|internal)$/.test(host)) return true;
-    // IPv4-mapped IPv6. The URL parser writes ::ffff:127.0.0.1 as ::ffff:7f00:1.
-    const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
-    if (mapped) {
-        const [high, low] = [parseInt(mapped[1]!, 16), parseInt(mapped[2]!, 16)];
+    // IPv6 forms that embed an IPv4 address: mapped, compatible, and NAT64.
+    // The URL parser writes ::ffff:127.0.0.1 as ::ffff:7f00:1.
+    const embedded = /^(?:::ffff:|::|64:ff9b::)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+    if (embedded) {
+        const [high, low] = [parseInt(embedded[1]!, 16), parseInt(embedded[2]!, 16)];
         return isPrivateHost(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
     }
     if (isIP(host) === 4) {
         const [a, b] = host.split('.').map(Number) as [number, number];
-        return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+        return (
+            a === 0 ||
+            a === 10 ||
+            a === 127 ||
+            (a === 100 && b >= 64 && b <= 127) ||
+            (a === 169 && b === 254) ||
+            (a === 172 && b >= 16 && b <= 31) ||
+            (a === 192 && b === 168)
+        );
     }
     if (isIP(host) === 6) {
-        return host === '::1' || host === '::' || /^f[cd]/.test(host) || /^fe[89ab]/.test(host);
+        // Loopback, unspecified, unique local, link-local, and site-local.
+        return host === '::1' || host === '::' || /^f[cd]/.test(host) || /^fe[89a-f]/.test(host);
     }
     return false;
 }
@@ -168,9 +215,19 @@ export function checkUrlPolicy(result: CitedToolResult, config: UrlPolicyConfig 
     };
 
     for (const { index, citation } of citations) {
-        check(`citations[${index}].url`, destination(citation, links));
+        // A client that ignores `citations` still follows the markdown link.
+        const linked = markdownDestination(citation, links);
+        check(`citations[${index}].url`, citation.url);
+        if (linked !== citation.url) check(`citations[${index}].url`, linked);
         check(`citations[${index}].thumbnailUrl`, citation.thumbnailUrl);
     }
+
+    // Links in the text that no citation is bound to.
+    const ids = new Set(citations.flatMap(({ citation }) => (citation.id ? [normalizeLabel(citation.id)] : [])));
+    const names = new Set(citations.flatMap(({ citation }) => (citation.name && !citation.id ? [citation.name] : [])));
+    for (const [label, url] of links.definitions) if (!ids.has(label)) check('content', url);
+    for (const link of links.inline) if (!names.has(link.text)) check('content', link.url);
+
     return { messages, info: { urlsChecked: checked } };
 }
 

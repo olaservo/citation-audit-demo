@@ -112,18 +112,24 @@ function invokeParams({ interceptor, overrides, config }: Selected, event: strin
         phase,
         payload,
         ...(config && { config }),
-        ...(overrides?.timeoutMs && { timeoutMs: overrides.timeoutMs }),
+        ...(overrides?.timeoutMs !== undefined && { timeoutMs: overrides.timeoutMs }),
         context
     };
 }
 
-function newContext() {
+/** One context per operation, shared by its validation and mutation invocations. */
+export function newContext() {
     return { timestamp: new Date().toISOString(), traceId: crypto.randomUUID() };
 }
 
 /** Validations run in parallel. Only severity "error" blocks, and only in active mode. */
-export async function runValidators(selected: Selected[], event: string, phase: Phase, payload: unknown): Promise<ValidationSummary> {
-    const context = newContext();
+export async function runValidators(
+    selected: Selected[],
+    event: string,
+    phase: Phase,
+    payload: unknown,
+    context: object = newContext()
+): Promise<ValidationSummary> {
     const outcomes = await Promise.all(
         applicable(selected, 'validation', event, phase).map(async (entry): Promise<ValidationOutcome> => {
             const outcome: ValidationOutcome = { ...resolvePolicy(entry), blocks: false };
@@ -148,11 +154,16 @@ export async function runValidators(selected: Selected[], event: string, phase: 
  * Audit mode computes the mutation without applying it. A failure in active
  * mode with failOpen false halts and discards every mutation.
  */
-export async function runMutators(selected: Selected[], event: string, phase: Phase, payload: unknown): Promise<MutationSummary> {
-    const context = newContext();
+export async function runMutators(
+    selected: Selected[],
+    event: string,
+    phase: Phase,
+    payload: unknown,
+    context: object = newContext()
+): Promise<MutationSummary> {
     const ordered = applicable(selected, 'mutation', event, phase)
         .map(entry => ({ entry, priority: resolvePriority(entry, phase) }))
-        .sort((a, b) => a.priority - b.priority || a.entry.interceptor.name.localeCompare(b.entry.interceptor.name));
+        .sort((a, b) => a.priority - b.priority || (a.entry.interceptor.name < b.entry.interceptor.name ? -1 : 1));
 
     const outcomes: MutationOutcome[] = [];
     let current = payload;

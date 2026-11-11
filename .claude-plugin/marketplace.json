@@ -1,0 +1,14 @@
+{
+  "name": "citation-audit-demo",
+  "description": "A Claude Code mod that audits SEP-3094 citations with SEP-2624 interceptors",
+  "owner": {
+    "name": "olaservo"
+  },
+  "plugins": [
+    {
+      "name": "citation-audit",
+      "source": "./mods/citation-audit",
+      "description": "Audit the research server's citations with interceptors and draw them under the tool call"
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { McpServer, ProtocolError } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
+import { z } from 'zod';
 
 import { checkBinding, checkQuotes, checkUrlPolicy, stripBadCitations, type CheckOutput, type SourceLookup } from './citation-checks.ts';
 import {
@@ -41,7 +42,14 @@ type Mutate = (result: CitedToolResult, config: Config) => Promise<Pick<Mutation
 
 const ALLOWED_SCHEMES = { type: 'array', items: { type: 'string' }, default: ['https'] };
 
-const INTERCEPTORS: Array<{ descriptor: Interceptor; check?: Check; mutate?: Mutate }> = [
+// SEP-2624: configuration and payloads MUST be validated before processing.
+// Each `config` enforces the `configSchema` its descriptor advertises.
+const NoConfig = z.strictObject({});
+const SchemesConfig = z.strictObject({ allowedSchemes: z.array(z.string()).optional() });
+const QuoteConfig = z.strictObject({ unverifiedSeverity: z.enum(['info', 'warn', 'error']).optional() });
+const PayloadSchema = z.looseObject({ content: z.array(z.looseObject({ type: z.string() })).optional() });
+
+const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; check?: Check; mutate?: Mutate }> = [
     {
         descriptor: {
             name: 'citation-binding',
@@ -52,6 +60,7 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; check?: Check; mutate?: Mut
             mode: 'audit',
             configSchema: { type: 'object', additionalProperties: false }
         },
+        config: NoConfig,
         check: result => checkBinding(result)
     },
     {
@@ -64,6 +73,7 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; check?: Check; mutate?: Mut
             mode: 'audit',
             configSchema: { type: 'object', properties: { allowedSchemes: ALLOWED_SCHEMES }, additionalProperties: false }
         },
+        config: SchemesConfig,
         check: (result, config) => checkUrlPolicy(result, config)
     },
     {
@@ -82,6 +92,7 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; check?: Check; mutate?: Mut
                 additionalProperties: false
             }
         },
+        config: QuoteConfig,
         check: (result, config) => checkQuotes(result, lookupSource, config)
     },
     {
@@ -97,6 +108,7 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; check?: Check; mutate?: Mut
             priorityHint: -10000,
             configSchema: { type: 'object', properties: { allowedSchemes: ALLOWED_SCHEMES }, additionalProperties: false }
         },
+        config: SchemesConfig,
         mutate: async (result, config) => {
             const { result: payload, stripped } = await stripBadCitations(result, lookupSource, config);
             return { modified: stripped.length > 0, payload, info: { stripped } };
@@ -148,19 +160,36 @@ function buildServer(): McpServer {
                 });
             }
 
+            const invalid = (what: string, error: z.ZodError) =>
+                new ProtocolError(-32602, `Invalid ${what} for ${params.name}`, { interceptor: params.name, reason: z.prettifyError(error) });
+            const parsedConfig = entry.config.safeParse(params.config ?? {});
+            if (!parsedConfig.success) throw invalid('config', parsedConfig.error);
+            const parsedPayload = PayloadSchema.safeParse(params.payload);
+            if (!parsedPayload.success) throw invalid('payload', parsedPayload.error);
+
             const started = performance.now();
-            const payload = (params.payload ?? {}) as CitedToolResult;
-            const config = params.config ?? {};
-            const deadline = <T>(run: Promise<T>): Promise<T> =>
-                params.timeoutMs ? Promise.race([run, timeout(params.name, params.phase, params.timeoutMs)]) : run;
+            const payload = parsedPayload.data as CitedToolResult;
+            const config = parsedConfig.data;
+            const { timeoutMs } = params;
+            // The race answers on time. It does not cancel the check, which the SEP requires.
+            const deadline = async <T>(run: () => T | Promise<T>): Promise<T> => {
+                try {
+                    const running = Promise.resolve().then(run);
+                    return await (timeoutMs === undefined ? running : Promise.race([running, timeout(params.name, params.phase, timeoutMs)]));
+                } catch (error) {
+                    if (error instanceof ProtocolError) throw error;
+                    const reason = error instanceof Error ? error.message : String(error);
+                    throw new ProtocolError(-32603, 'Interceptor execution failed', { interceptor: params.name, reason });
+                }
+            };
             const common = { interceptor: params.name, phase: params.phase };
 
             if (entry.mutate) {
-                const mutation = await deadline(entry.mutate(payload, config));
+                const mutation = await deadline(() => entry.mutate!(payload, config));
                 return { ...common, type: 'mutation', durationMs: Math.round(performance.now() - started), ...mutation };
             }
 
-            const { messages, info } = await deadline(Promise.resolve(entry.check!(payload, config)));
+            const { messages, info } = await deadline(() => entry.check!(payload, config));
             const worst = messages.reduce<Severity | undefined>(
                 (top, message) => (top === undefined || SEVERITY_RANK[message.severity] > SEVERITY_RANK[top] ? message.severity : top),
                 undefined

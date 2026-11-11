@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "research": {
+      "command": "node",
+      "args": ["--import", "tsx", "src/research-server.ts"]
+    }
+  }
+}

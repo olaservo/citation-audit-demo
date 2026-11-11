@@ -1,34 +1,8 @@
-// Host for the demo. Connects to the research server and to the Interceptor
-// Server, calls the `research` tool, and audits each result's citations on
-// the response phase before delivering it.
-import { fileURLToPath } from 'node:url';
-
-import { Client } from '@modelcontextprotocol/client';
-import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
-
-import {
-    discover,
-    mutationError,
-    runMutators,
-    runValidators,
-    validationError,
-    type MutationSummary,
-    type Selected,
-    type ValidationSummary
-} from './invoker.ts';
-import { CITATIONS_EXTENSION, INTERCEPTORS_EXTENSION, type Citation, type CitedToolResult, type InterceptorOverrides } from './types.ts';
-
-async function connect(name: string, script: string, capabilities: Record<string, unknown> = {}): Promise<Client> {
-    const client = new Client({ name, version: '0.1.0' }, { capabilities, versionNegotiation: { mode: 'auto' } });
-    await client.connect(
-        new StdioClientTransport({
-            command: process.execPath,
-            args: ['--import', 'tsx', fileURLToPath(new URL(script, import.meta.url))],
-            stderr: 'ignore'
-        })
-    );
-    return client;
-}
+// Terminal demo. Calls the `research` tool four times and prints what the
+// host's audit of each result found and delivered.
+import { callAndAudit, closeHost, MODES, startHost } from './host.ts';
+import type { MutationSummary, ValidationSummary } from './invoker.ts';
+import { INTERCEPTORS_EXTENSION, type Citation, type CitedToolResult, type InterceptorOverrides } from './types.ts';
 
 /** The resolved mode and failOpen, marking values set by an invoker override. */
 function policyOf(outcome: { mode: string; modeSource: string; failOpen: boolean; failOpenSource: string }): string {
@@ -78,75 +52,46 @@ function printMutation(summary: MutationSummary): void {
     }
 }
 
-// SEP-3094: declare that this client understands and renders citations.
-const research = await connect('citation-audit-host', './research-server.ts', {
-    extensions: { [CITATIONS_EXTENSION]: { render: {} } }
-});
-const interceptorServer = await connect('citation-audit-host', './interceptor-server.ts');
+const host = await startHost();
 
-const extension = interceptorServer.getServerCapabilities()?.extensions?.[INTERCEPTORS_EXTENSION];
-console.log(`Negotiated protocol: research ${research.getNegotiatedProtocolVersion()}, interceptors ${interceptorServer.getNegotiatedProtocolVersion()}`);
+const extension = host.interceptorServer.getServerCapabilities()?.extensions?.[INTERCEPTORS_EXTENSION];
+console.log(
+    `Negotiated protocol: research ${host.research.getNegotiatedProtocolVersion()}, interceptors ${host.interceptorServer.getNegotiatedProtocolVersion()}`
+);
 console.log(`Interceptor Server capability ${INTERCEPTORS_EXTENSION}: ${JSON.stringify(extension)}`);
 
-const discovered = await discover(interceptorServer, 'tools/call');
 console.log('interceptors/list:');
-for (const interceptor of discovered) {
+for (const interceptor of host.interceptors) {
     const hooks = interceptor.hooks.map(hook => `${hook.events.join(',')}@${hook.phase}`).join(' ');
     console.log(row(interceptor.name, interceptor.type, hooks, `mode=${interceptor.mode ?? 'active'} failOpen=${interceptor.failOpen ?? false}`));
 }
 
-const CONFIG: Record<string, Record<string, unknown>> = {
-    'citation-url-policy': { allowedSchemes: ['https'] },
-    'citation-stripper': { allowedSchemes: ['https'] }
-};
-
 async function run(title: string, topic: string, overrides: Record<string, InterceptorOverrides> = {}): Promise<void> {
     console.log(`\n=== ${title} ===`);
-    const selected: Selected[] = discovered.map(interceptor => ({
-        interceptor,
-        server: interceptorServer,
-        overrides: overrides[interceptor.name],
-        config: CONFIG[interceptor.name]
-    }));
+    const audit = await callAndAudit(host, 'research', { topic }, overrides);
+    console.log(`tools/call research(${topic}) returned ${citationsOf(audit.result).length} citations`);
 
-    const result = (await research.callTool({ name: 'research', arguments: { topic } })) as CitedToolResult;
-    console.log(`tools/call research(${topic}) returned ${citationsOf(result).length} citations`);
-
-    // Receiving: validate, then mutate only if validation did not block.
     console.log('validate:');
-    const validation = await runValidators(selected, 'tools/call', 'response', result);
-    printValidation(validation);
-    if (validation.blocked) {
-        console.log('BLOCKED before mutation:', JSON.stringify(validationError(validation), null, 2));
+    printValidation(audit.validation);
+    if (audit.mutation) {
+        console.log('mutate:');
+        printMutation(audit.mutation);
+    }
+    if (!audit.delivered) {
+        console.log(`BLOCKED${audit.mutation ? '' : ' before mutation'}:`, JSON.stringify(audit.error, null, 2));
         return;
     }
 
-    console.log('mutate:');
-    const mutation = await runMutators(selected, 'tools/call', 'response', result);
-    printMutation(mutation);
-    if (mutation.failedInterceptor) {
-        console.log('BLOCKED:', JSON.stringify(mutationError(mutation), null, 2));
-        return;
-    }
-
-    const delivered = mutation.payload as CitedToolResult;
-    const kept = citationsOf(delivered).map(citation => citation.id ?? citation.name ?? '(no key)');
+    const kept = citationsOf(audit.delivered).map(citation => citation.id ?? citation.name ?? '(no key)');
     console.log(`DELIVERED with ${kept.length} citations (${kept.join(', ')}).`);
-    if (mutation.outcomes.some(outcome => outcome.applied)) {
-        console.log(delivered.content?.map(block => block.text?.trimEnd()).join('\n').replace(/^/gm, '    | '));
+    if (audit.mutation?.outcomes.some(outcome => outcome.applied)) {
+        console.log(audit.delivered.content?.map(block => block.text?.trimEnd()).join('\n').replace(/^/gm, '    | '));
     }
 }
 
 await run('1. Sound citations, server defaults (audit)', 'judicial-review');
 await run('2. Flawed citations, server defaults (audit)', 'severance');
-await run('3. Flawed citations, invoker promotes the stripper to active', 'severance', {
-    'citation-stripper': { mode: 'active', timeoutMs: 2000 }
-});
-await run('4. Flawed citations, invoker also promotes two validators to active', 'severance', {
-    'citation-url-policy': { mode: 'active' },
-    'citation-quote-check': { mode: 'active', timeoutMs: 2000 },
-    'citation-stripper': { mode: 'active', timeoutMs: 2000 }
-});
+await run('3. Flawed citations, invoker promotes the stripper to active', 'severance', MODES.strip);
+await run('4. Flawed citations, invoker also promotes two validators to active', 'severance', MODES.block);
 
-await research.close();
-await interceptorServer.close();
+await closeHost(host);

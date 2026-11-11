@@ -129,6 +129,8 @@ export interface Citation {
     description?: string;
     thumbnailUrl?: string;
     datePublished?: string;
+    author?: unknown;
+    publisher?: unknown;
     display?: 'embedded' | 'external' | 'auto';
 }
 
