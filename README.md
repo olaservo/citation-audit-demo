@@ -28,7 +28,7 @@ The demo implements the three behaviours those comments ask about:
 | A server that does not answer a client that will not render citations | Off by default. With `PORTAL_REQUIRE_RENDER=1` the portal server returns a tool error to a client that does not declare citation rendering. |
 | Clients that are "compliant by design" | The Claude Code mod draws the citations from the audited result, so the license, the publisher, and the link are shown whether or not the model repeats them. |
 
-This is independent work. OKFN did not write or review it.
+This is independent work and not officially associated with OKFN.
 
 ## The data
 
@@ -118,7 +118,7 @@ The checks and the strip are plain functions in `src/citation-checks.ts`.
 
 The filter removes the citation and leaves the claim in the text uncited. Link text is kept as plain text. Findings at `warn` or `info` do not strip, so a marker with no entry (`[c3]` in the demo) stays.
 
-The filter does not act on a license error. Stripping suits a reader checking an answer: a citation that fails a check is removed and the claim stands uncited. A publisher whose license requires credit is worse off when the citation is removed, so the response to a license error is to block the result.
+The filter does not act on a license error. Stripping makes the most sense for a reader checking an answer. In that case, a citation that fails a check is removed and the claim remains uncited. A publisher whose license requires credit is worse off when the citation is removed, so the response to a license error is to block the result.
 
 `citation-url-policy` and `citation-license` are deployment policies. SEP-3094 "Dereferencing citation URIs" restricts what a client fetches automatically and allows MCP-resolved schemes; it does not make a non-https citation invalid. The SEP does not mention licenses. `license` is a schema.org CreativeWork property outside the subset the SEP lists.
 
@@ -182,17 +182,16 @@ Claude Code's own MCP client drops the top-level `citations` field: a mod's `too
 
 ## Open questions
 
-The demo ran into these where attribution, SEP-3094, and SEP-2624 meet. None is settled by either text.
+The demo ran into these where attribution, SEP-3094, and SEP-2624 meet but don't appear to have clear answers yet:
 
 - A server omits `citations` for a client that did not declare support and still returns the text. Attribution-licensed content then reaches a client that will show no credit. Should the server return less, or refuse?
 - SEP-3094 defines no error or convention for a server declining a client that will not render. Is a tool error the right shape, and how does the user learn why?
-- The client's declaration is self-reported. The server learns what the client says and not what it draws.
 - A client that declared `render` should render citations. Does that hold for a block-level citation, or a claim-level one whose marker the model dropped from its answer?
-- `license` is outside the SEP's CreativeWork subset. Share-alike and modification-notice terms have no field, and nothing tells the client that a citation must not be removed.
+- `license` is outside the SEP's CreativeWork subset. Share-alike and modification-notice terms don't appear to have an official field. Also, how should a server indicate that a citation must not be removed, for attribution or correction?
 - An auditor that strips a failing citation also removes the credit. The demo blocks on a license error. Is that the auditor's decision or the server's?
 - The audit here runs on the host, where the citations are drawn. The gateway runs the same interceptors and cannot see what the client draws. What should a gateway declare to the server: its own support, or its client's?
 
-## Where the demo fills a gap or departs from the SEPs
+## Where the demo fills a gap or departs from the referenced SEPs
 
 - SEP-2624 does not define the payload for the response phase. The demo passes the `tools/call` result object.
 - SEP-3094 declares the client capability as a top-level `citations` key in `clientCapabilities`. The SDK drops capability keys it does not know. The demo declares `extensions["io.modelcontextprotocol/citations"] = { render: {} }` instead.
@@ -219,4 +218,4 @@ This demo builds on work by members of the MCP community.
 - The discussion on SEP-3094 also drew on [Samuel Klein](https://github.com/metasj), on the uses of citation for attribution, verification, and provenance, and [Mario](https://github.com/MarioPadilla), on citing private documents.
 - [Kryspin Ziemski](https://github.com/kziemski) suggested the citations angle on the MCP contributors Discord and brought Karthik Palaniappan in.
 
-None of them wrote or reviewed this demo.
+Note: They did not write or review this demo yet.
