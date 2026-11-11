@@ -31,6 +31,8 @@ const EARNINGS = 'northmark-weekly-earnings';
 const row = {
     population2026: '"PEA01","Population Estimates (Persons in April)","2026","2026","-","All ages","-","Both sexes","Thousand","5525.6"',
     population2025: '"PEA01","Population Estimates (Persons in April)","2025","2025","-","All ages","-","Both sexes","Thousand","5458.6"',
+    // Real. The corpus has no extract of this dataset, so the quote cannot be checked.
+    longTerm: '"QLF51C02","Long-term unemployment rate","20262","2026Q2","-","Both sexes","-","All ages","-","Levels of Education (Levels  0-8)","%","1.3"',
     unemployment: '"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202610","2026 October","316","15 - 74 years","-","Both sexes","%","4.8"'
 };
 
@@ -95,6 +97,7 @@ const ANSWERS: Record<string, Answer> = {
     unemployment: {
         text: [
             'The seasonally adjusted unemployment rate in Ireland was 4.8 percent in October 2026 [c1].',
+            'The long-term unemployment rate was 1.3 percent in the second quarter of 2026.',
             'In the fictional region of Northmark, youth unemployment fell to 9.8 percent in the same month [c2].',
             'The Northmark rate is forecast to fall below 4.5 percent in 2027 [c3].',
             'Northmark regional figures are on the staging portal [c4].',
@@ -120,7 +123,7 @@ const ANSWERS: Record<string, Answer> = {
                 publisher: { '@type': 'Organization', name: 'Portal staging' }
             },
             // No [c5] marker in the text: the dataset is credited for the whole answer.
-            cite(QUARTERLY, { id: 'c5', url: `${PORTAL}/${QUARTERLY}` }),
+            cite(QUARTERLY, { id: 'c5', url: `${PORTAL}/${QUARTERLY}`, text: row.longTerm }),
             // The sentence is in the invented dataset. Its record has a share-alike
             // license and no organization, so nobody is named to credit.
             cite(EARNINGS, { id: 'c6', text: 'Average weekly earnings in Northmark rose 3.1 percent over the year to the second quarter of 2026.' }),

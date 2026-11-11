@@ -33,6 +33,7 @@ This is independent work. OKFN did not write or review it.
 The citations point at real datasets on [data.gov.ie](https://data.gov.ie), Ireland's open data portal, which runs CKAN. The datasets are published by the Central Statistics Office under CC BY 4.0. Everything was retrieved on 2026-11-11.
 
 - `corpus/datasets.json` holds three catalogue records as CKAN's `package_show` returned them, cut down to `name`, `title`, `notes`, the license fields, `organization`, and `metadata_modified`. Each citation's name, license, publisher, and date come from its record.
+- The quarterly unemployment dataset (QLF51) has no extract, so the quote on its citation cannot be checked and is reported as unverified.
 - `corpus/PEA01.txt` and `MUM01.txt` are extracts of the datasets' CSV files: the header and a few rows each. A citation's quoted `text` is one CSV row, and `citation-quote-check` looks for it in the extract.
 - The demo makes no network requests when it runs. The extracts will go stale as the Central Statistics Office revises its figures.
 
@@ -140,6 +141,7 @@ Start it in this folder so `.mcp.json` adds the portal server. Then ask for stat
 - A `tool.call` hook answers each `statistics` call by running `src/audit-cli.ts`, which calls the tool as a client that declares citations, runs the interceptors, and prints a report.
 - The model reads the audited text and a note listing the citations kept, stripped, and flagged.
 - A band above the prompt shows the last audit: the counts and one line per citation, with `Details` and `Hide` buttons. A citation that passed every check is drawn with its license, who to credit, its URL, and an `open` button that opens the exact URL in the browser. A narrow window cuts a long URL short in the row, and the button does not depend on what the row shows. No other citation is drawn as a link. An answer with no citations gets a warning line.
+- Each line starts with what the audit found. `verified`: the citation's quote is in the source. `unverified`: it has a quote and the auditor has no copy of the source to check it against. `kept`: it passed and quotes nothing. `flagged` and `stripped`: a check failed.
 - The same lines are drawn under the tool call's row, and the mod unfolds the group of tool calls that holds it.
 - `/citation-audit` opens a pane with the last audit and its findings. `/citation-audit audit`, `strip`, or `block` sets the mode, which maps to scenarios 2, 3, and 4 above. The pane has a button for each mode.
 - In `block` mode the model receives the `-32602` error in place of the result.

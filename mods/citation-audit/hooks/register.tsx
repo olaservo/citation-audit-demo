@@ -24,10 +24,16 @@ async function currentMode($: EngineInterface, configured: AuditMode): Promise<A
   return (await read($, mode)) ?? configured
 }
 
+/** Passed every check that ran, with a quote the auditor had no copy of the source to check. */
+function isUnverified(c: CitationRow): boolean {
+  return c.status === 'kept' && c.quote === 'unverified'
+}
+
 function counts(citations: readonly CitationRow[]): string {
   if (citations.length === 0) return 'no citations'
   const of = (status: CitationRow['status']) => citations.filter(c => c.status === status).length
-  return [`${of('kept')} kept`, ...(of('stripped') ? [`${of('stripped')} stripped`] : []), ...(of('flagged') ? [`${of('flagged')} flagged`] : [])].join(', ')
+  const unverified = citations.filter(isUnverified).length
+  return [`${of('kept')} kept${unverified ? ` (${unverified} unverified)` : ''}`, ...(of('stripped') ? [`${of('stripped')} stripped`] : []), ...(of('flagged') ? [`${of('flagged')} flagged`] : [])].join(', ')
 }
 
 function citationLine(c: CitationRow): string {
@@ -46,6 +52,7 @@ function summary({ Text }: Els, audit: AuditRecord) {
   return [
     <Text dimColor>{audit.mode} · </Text>,
     <Text color="success">{of('kept')} kept</Text>,
+    ...(audit.citations.some(isUnverified) ? [<Text dimColor> ({audit.citations.filter(isUnverified).length} unverified)</Text>] : []),
     ...(of('stripped') ? [<Text dimColor>, </Text>, <Text color="error">{of('stripped')} stripped</Text>] : []),
     ...(of('flagged') ? [<Text dimColor>, </Text>, <Text color="warning">{of('flagged')} flagged</Text>] : []),
   ]
@@ -65,6 +72,8 @@ function shortReason(reasons: readonly string[]): string {
  * passed every check is drawn with a link, after its license and who to
  * credit. The link has no label: a terminal without hyperlinks draws a
  * labelled link as the label and then the URL, which pushed the rest off the row.
+ * "verified": its quote is in the source. "unverified": it has a quote and
+ * the auditor has no copy of the source. "kept": it quotes nothing.
  * An answer with no citations gets one line saying so.
  */
 function citationRows({ Box, Button, Link, Text }: Els, citations: readonly CitationRow[], open?: (url: string) => void) {
@@ -72,7 +81,7 @@ function citationRows({ Box, Button, Link, Text }: Els, citations: readonly Cita
     return [
       <Box>
         <Box flexShrink={0}>
-          <Text color="warning">{MARK.flagged} {'uncited'.padEnd(9)}</Text>
+          <Text color="warning">{MARK.flagged} {'uncited'.padEnd(10)}</Text>
         </Box>
         <Text dimColor wrap="truncate-end">the answer names no dataset, so its figures cannot be traced to a source</Text>
       </Box>,
@@ -81,15 +90,15 @@ function citationRows({ Box, Button, Link, Text }: Els, citations: readonly Cita
   const failedFirst = [...citations].sort((a, b) => Number(a.status === 'kept') - Number(b.status === 'kept'))
   return failedFirst.map((c, i) => {
     const url = c.status === 'kept' ? c.url : undefined
-    const word = c.status === 'kept' && c.quote === 'verified' ? 'verified' : c.status
+    const word = isUnverified(c) ? 'unverified' : c.status === 'kept' && c.quote === 'verified' ? 'verified' : c.status
     // A citation with no id is keyed by its name: show the name once.
     const key = c.key === c.name ? '' : `[${c.key}]`
     const label = [key, c.name].filter(Boolean).join(' ')
     return (
       <Box>
         <Box flexShrink={0}>
-          <Text color={COLOR[c.status]}>
-            {MARK[c.status]} {word.padEnd(9)}
+          <Text color={isUnverified(c) ? undefined : COLOR[c.status]}>
+            {isUnverified(c) ? '?' : MARK[c.status]} {word.padEnd(10)}
           </Text>
         </Box>
         {open && url && (

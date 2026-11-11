@@ -145,6 +145,20 @@ test('an answer with no citations is delivered with a warning', async ($, on) =>
   await ui.unmount()
 })
 
+test('a quote with no copy of its source to check reads as unverified', async ($, on) => {
+  const quoted = { ...STRIPPED.citations[0]!, key: 'c5', quote: 'unverified' as const }
+  session(on, { ...STRIPPED, citations: [STRIPPED.citations[0]!, quoted], findings: [] })
+  const ran = await $.tool.call({ tool: 'mcp__portal__statistics', topic: 'unemployment', tool_use_id: 'call-3' })
+  expect(ran.context?.[0]).toContain('2 kept (1 unverified)')
+  expect(ran.context?.[0]).toContain('quote unverified')
+
+  const props = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 20, bodyColumns: 80, scroll: { offset: 0, bodyRows: 20 }, view: {} }
+  const ui = await $.ui.mount({ plugin: 'citation-audit', component: 'AbovePrompt', surface: 'terminal', props })
+  expect((await ui.find({ type: 'Text', text: /^\? unverified/ }))?.text).toContain('unverified')
+  expect((await ui.find({ type: 'Button', key: 'open-1' }))).toBeDefined()
+  await ui.unmount()
+})
+
 test('the pane lists the last audit, on every surface', async ($, on) => {
   session(on, STRIPPED)
   await $.tool.call({ tool: 'mcp__portal__statistics', topic: 'unemployment' })
