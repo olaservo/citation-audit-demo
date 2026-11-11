@@ -33,12 +33,12 @@ export type Mode = 'audit' | 'strip' | 'block';
 /** Invoker overrides for each mode. `audit` keeps the server-declared defaults. */
 export const MODES: Record<Mode, Record<string, InterceptorOverrides>> = {
     audit: {},
-    strip: { 'citation-stripper': { mode: 'active', timeoutMs: 2000 } },
+    strip: { 'citation-filter': { mode: 'active', timeoutMs: 2000 } },
     block: {
         'citation-url-policy': { mode: 'active' },
         'citation-quote-check': { mode: 'active', timeoutMs: 2000 },
         'citation-license': { mode: 'active' },
-        'citation-stripper': { mode: 'active', timeoutMs: 2000 }
+        'citation-filter': { mode: 'active', timeoutMs: 2000 }
     }
 };
 
@@ -46,7 +46,7 @@ const CONFIG: Record<string, Record<string, unknown>> = {
     // Warn the reader when an answer names no source at all.
     'citation-binding': { uncitedSeverity: 'warn' },
     'citation-url-policy': { allowedSchemes: ['https'] },
-    'citation-stripper': { allowedSchemes: ['https'] }
+    'citation-filter': { allowedSchemes: ['https'] }
 };
 
 export interface Host {

@@ -119,7 +119,7 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
     },
     {
         descriptor: {
-            name: 'citation-stripper',
+            name: 'citation-filter',
             version: '0.1.0',
             description:
                 'Removes citations that fail the binding, URL policy, or quote checks at severity "error", with their markers and link definitions',

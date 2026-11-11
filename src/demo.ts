@@ -91,7 +91,7 @@ async function run(title: string, topic: string, overrides: Record<string, Inter
 
 await run('1. Sound citations, server defaults (audit)', 'population');
 await run('2. Flawed citations, server defaults (audit)', 'unemployment');
-await run('3. Flawed citations, invoker promotes the stripper to active', 'unemployment', MODES.strip);
+await run('3. Flawed citations, invoker promotes the filter to active', 'unemployment', MODES.strip);
 await run('4. Flawed citations, invoker also promotes three validators to active', 'unemployment', MODES.block);
 await run('5. An answer with no citations, server defaults (audit)', 'inflation');
 

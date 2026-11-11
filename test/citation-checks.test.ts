@@ -158,7 +158,7 @@ test('license check wants a license, and someone to credit when the license requ
     );
 });
 
-test('stripper leaves a citation whose only error is its license', async () => {
+test('filter leaves a citation whose only error is its license', async () => {
     const result = { content: text(`One [c1].\n\n[c1]: ${URL_A}`), citations: [{ id: 'c1' }] };
     assert.equal(checkLicense(result).messages[0]!.severity, 'error');
     assert.deepEqual((await stripBadCitations(result, async () => undefined)).stripped, []);
@@ -170,7 +170,7 @@ test('unlink removes definitions and markers and keeps link text', () => {
     assert.equal(after, `One. Two the case. Three Named. Four [c3].\n\n[c3]: ${URL_A}`);
 });
 
-test('stripper removes citations with errors and leaves a result that passes every check', async () => {
+test('filter removes citations with errors and leaves a result that passes every check', async () => {
     const lookup = async (url: string) => (url === URL_A ? 'The quick brown fox.' : undefined);
     const result = {
         content: text(`Good [c1]. Fabricated [c2]. Unsafe [c3]. Unbound.\n\n[c1]: ${URL_A}\n[c2]: ${URL_A}\n[c3]: https://localhost/x`),
@@ -192,7 +192,7 @@ test('stripper removes citations with errors and leaves a result that passes eve
     assert.equal(remaining.filter(message => message.severity === 'error').length, 0);
 });
 
-test('stripper keeps the marker a kept citation shares and returns sound results untouched', async () => {
+test('filter keeps the marker a kept citation shares and returns sound results untouched', async () => {
     const lookup = async (url: string) => (url === URL_A ? 'The quick brown fox.' : undefined);
     const duplicate = { content: text(`One [c1].\n\n[c1]: ${URL_A}`), citations: [{ id: 'c1' }, { id: 'c1', text: 'The fox was slow.' }] };
     const { result: clean } = await stripBadCitations(duplicate, lookup);

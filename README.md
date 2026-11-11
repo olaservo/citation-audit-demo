@@ -18,7 +18,7 @@ The reasons they give:
 - Public institutions, government statistics bodies, and galleries, libraries, archives, and museums are funded on the visibility and impact of their work. Data producers and the Commons community want attribution too.
 - Citations let a consumer ask a server for answers that can be verified.
 
-They reported that they could not steer the model to keep the attribution, that what the user sees depends on each client's frontend and prompt, and that they found no way to enforce it from the protocol side. Their own [server](https://github.com/okfn/mcp-server) requires every tool to return structured output with a `sources` list of URLs, and their demo is at [mcp.okfn.org](https://mcp.okfn.org/).
+They reported that they could not steer the model to keep the attribution, that what the user sees depends on each client's frontend and prompt, and that they found no way to enforce it from the protocol side. Their server is at [okfn/mcp-server](https://github.com/okfn/mcp-server) and their demo at [mcp.okfn.org](https://mcp.okfn.org/).
 
 The demo implements the three behaviours those comments ask about:
 
@@ -100,7 +100,7 @@ sequenceDiagram
     alt an active validator reports an error
         Note over H: block with -32602
     else
-        H->>I: interceptor/invoke citation-stripper
+        H->>I: interceptor/invoke citation-filter
         I-->>H: modified, payload
         Note over H: deliver the result
     end
@@ -116,13 +116,13 @@ All five hook `tools/call`, phase `response`, and declare `mode: "audit"`.
 | `citation-url-policy` | validation | Every URL a reader could follow uses an allowed scheme and does not point at a private, loopback, or link-local address: `url`, `thumbnailUrl`, the markdown link a citation is bound to, and links in the text with no citation. | `allowedSchemes`, default `["https"]` |
 | `citation-quote-check` | validation | A citation's quoted `text` appears in the cited dataset. Declares `failOpen: true`. | `unverifiedSeverity`, default `"info"` |
 | `citation-license` | validation | Every citation carries a `license`. When the license requires attribution (Creative Commons BY licenses, ODbL, ODC-BY), the citation names a `publisher` or `author`. | `missingSeverity`, default `"error"` |
-| `citation-stripper` | mutation | Removes every citation the binding, URL policy, or quote check reports at severity `error`, with its marker and link definition in the text. `priorityHint: -10000`. | `allowedSchemes`, default `["https"]` |
+| `citation-filter` | mutation | Removes every citation the binding, URL policy, or quote check reports at severity `error`, with its marker and link definition in the text. `priorityHint: -10000`. | `allowedSchemes`, default `["https"]` |
 
 The checks and the strip are plain functions in `src/citation-checks.ts`.
 
-The stripper removes the citation and leaves the claim in the text uncited. Link text is kept as plain text. Findings at `warn` or `info` do not strip, so a marker with no entry (`[c3]` in the demo) stays.
+The filter removes the citation and leaves the claim in the text uncited. Link text is kept as plain text. Findings at `warn` or `info` do not strip, so a marker with no entry (`[c3]` in the demo) stays.
 
-The stripper does not act on a license error. Stripping suits a reader checking an answer: a citation that fails a check is removed and the claim stands uncited. A publisher whose license requires credit is worse off when the citation is removed, so the response to a license error is to block the result.
+The filter does not act on a license error. Stripping suits a reader checking an answer: a citation that fails a check is removed and the claim stands uncited. A publisher whose license requires credit is worse off when the citation is removed, so the response to a license error is to block the result.
 
 `citation-url-policy` and `citation-license` are deployment policies. SEP-3094 "Dereferencing citation URIs" restricts what a client fetches automatically and allows MCP-resolved schemes; it does not make a non-https citation invalid. The SEP does not mention licenses. `license` is a schema.org CreativeWork property outside the subset the SEP lists.
 
@@ -130,10 +130,10 @@ The stripper does not act on a license error. Stripping suits a reader checking 
 
 The host follows the receiving order from SEP-2624: validate in parallel, then mutate in sequence if validation did not block.
 
-1. `statistics(population)` returns sound citations in all three link forms. All validators pass and the stripper returns `modified: false`.
-2. `statistics(unemployment)` returns flawed citations: a figure the dataset does not contain, a marker with no entry, a dataset credited with no marker, an entry with no `id`, `name`, or `url`, a staging portal on a private address, a `file:` thumbnail, and a share-alike dataset with nobody named to credit. With the server-declared audit mode the findings are logged, the stripper computes a shadow mutation that is not applied, and the result is delivered unchanged.
-3. The same call with an invoker override that promotes `citation-stripper` to `active`. Three of six citations are stripped and the result is delivered with the remaining three. One of the three still has the license error.
-4. The same call with `citation-url-policy`, `citation-quote-check`, and `citation-license` also promoted to `active`. The result is blocked with `-32602 Interceptor validation failed` and the stripper does not run.
+1. `statistics(population)` returns sound citations in all three link forms. All validators pass and the filter returns `modified: false`.
+2. `statistics(unemployment)` returns flawed citations: a figure the dataset does not contain, a marker with no entry, a dataset credited with no marker, an entry with no `id`, `name`, or `url`, a staging portal on a private address, a `file:` thumbnail, and a share-alike dataset with nobody named to credit. With the server-declared audit mode the findings are logged, the filter computes a shadow mutation that is not applied, and the result is delivered unchanged.
+3. The same call with an invoker override that promotes `citation-filter` to `active`. Three of six citations are stripped and the result is delivered with the remaining three. One of the three still has the license error.
+4. The same call with `citation-url-policy`, `citation-quote-check`, and `citation-license` also promoted to `active`. The result is blocked with `-32602 Interceptor validation failed` and the filter does not run.
 5. `statistics(inflation)` returns a figure with no citations. The host configures `citation-binding` with `uncitedSeverity: "warn"`, so the result is delivered with a warning.
 6. A second client that declares no citation support calls `statistics(population)`. The portal server returns the text and omits `citations`, as SEP-3094 asks. The same call against a portal started with `PORTAL_REQUIRE_RENDER=1` returns a tool error that says it answers only clients that render citations.
 7. The same plain client calls `statistics(unemployment)` through the gateway. In `strip` mode it receives the stripped text. In `block` mode it receives the `-32602` error.
@@ -210,5 +210,5 @@ The demo ran into these where attribution, SEP-3094, and SEP-2624 meet. None is 
 - A halted mutation returns the original payload as `lastValidPayload`. The SEP does not define the field.
 - A citation's `@context` is ignored. Every citation is read in the default MCP format.
 - With one mutator, priority ordering and passing each mutation's output to the next are implemented in `src/invoker.ts` but not exercised. `failOpen`, timeouts, and hook narrowing are also implemented and not exercised.
-- The stripper reruns three of the checks itself. SEP-2624 gives a mutator no access to validator results, and interceptor state propagation is listed as future work.
+- The filter reruns three of the checks itself. SEP-2624 gives a mutator no access to validator results, and interceptor state propagation is listed as future work.
 - `src/markdown-links.ts` is a small scanner, not a CommonMark parser. It does not skip code spans.
