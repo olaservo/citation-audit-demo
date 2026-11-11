@@ -1,0 +1,15 @@
+PEA01 - Population Estimates (Persons in April)
+
+Dataset: https://data.gov.ie/dataset/pea01-population-estimates-persons-in-april
+Data file: https://ws.cso.ie/public/api.restful/PxStat.Data.Cube_API.ReadDataset/PEA01/CSV/1.0/en
+Publisher: Central Statistics Office
+License: Creative Commons Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/)
+Retrieved: 2026-11-11
+Extract: 5 of 6237 rows
+
+"STATISTIC","STATISTIC Label","TLIST(A1)","Year","C02076V02508","Age Group","C02199V02655","Sex","UNIT","VALUE"
+"PEA01","Population Estimates (Persons in April)","2022","2022","-","All ages","-","Both sexes","Thousand","5184"
+"PEA01","Population Estimates (Persons in April)","2023","2023","-","All ages","-","Both sexes","Thousand","5281.6"
+"PEA01","Population Estimates (Persons in April)","2024","2024","-","All ages","-","Both sexes","Thousand","5380.3"
+"PEA01","Population Estimates (Persons in April)","2025","2025","-","All ages","-","Both sexes","Thousand","5458.6"
+"PEA01","Population Estimates (Persons in April)","2026","2026","-","All ages","-","Both sexes","Thousand","5525.6"

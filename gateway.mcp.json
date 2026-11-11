@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "portal": {
+      "command": "node",
+      "args": ["--import", "tsx", "src/gateway.ts"],
+      "env": { "GATEWAY_MODE": "strip" }
+    }
+  }
+}

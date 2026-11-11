@@ -1,8 +1,8 @@
-// Calls one tool on the research server, audits the result, and prints an
+// Calls one tool on the portal server, audits the result, and prints an
 // AuditReport as JSON. The Claude Code mod in mods/citation-audit runs this
-// for each `research` call.
+// for each `statistics` call.
 //
-//   echo '{"name":"research","arguments":{"topic":"severance"}}' | tsx src/audit-cli.ts strip
+//   echo '{"name":"statistics","arguments":{"topic":"unemployment"}}' | tsx src/audit-cli.ts strip
 import { text } from 'node:stream/consumers';
 
 import { callAndAudit, closeHost, MODES, report, startHost, type Mode } from './host.ts';

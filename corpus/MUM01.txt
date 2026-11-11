@@ -1,0 +1,22 @@
+MUM01 - Seasonally Adjusted Monthly Unemployment
+
+Dataset: https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment
+Data file: https://ws.cso.ie/public/api.restful/PxStat.Data.Cube_API.ReadDataset/MUM01/CSV/1.0/en
+Publisher: Central Statistics Office
+License: Creative Commons Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/)
+Retrieved: 2026-11-11
+Extract: 12 of 6228 rows
+
+"STATISTIC","Statistic Label","TLIST(M1)","Month","C02076V02508","Age Group","C02199V02655","Sex","UNIT","VALUE"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202607","2026 July","310","15 - 24 years","-","Both sexes","%","11.4"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202607","2026 July","316","15 - 74 years","-","Both sexes","%","4.8"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202607","2026 July","4350","25 - 74 years","-","Both sexes","%","3.9"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202608","2026 August","310","15 - 24 years","-","Both sexes","%","11.2"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202608","2026 August","316","15 - 74 years","-","Both sexes","%","4.7"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202608","2026 August","4350","25 - 74 years","-","Both sexes","%","3.8"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202609","2026 September","310","15 - 24 years","-","Both sexes","%","11.4"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202609","2026 September","316","15 - 74 years","-","Both sexes","%","4.7"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202609","2026 September","4350","25 - 74 years","-","Both sexes","%","3.8"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202610","2026 October","310","15 - 24 years","-","Both sexes","%","11.5"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202610","2026 October","316","15 - 74 years","-","Both sexes","%","4.8"
+"MUM01C02","Seasonally Adjusted Monthly Unemployment Rate","202610","2026 October","4350","25 - 74 years","-","Both sexes","%","3.8"

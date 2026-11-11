@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { checkBinding, checkQuotes, checkUrlPolicy, stripBadCitations } from '../src/citation-checks.ts';
+import { checkBinding, checkLicense, checkQuotes, checkUrlPolicy, listCitations, stripBadCitations } from '../src/citation-checks.ts';
 import { parseLinks, unlink } from '../src/markdown-links.ts';
 
 const URL_A = 'https://example.com/a';
@@ -116,6 +116,52 @@ test('quote check verifies, rejects, and reports unverifiable quotes', async () 
     );
     const strict = await checkQuotes(result, lookup, { unverifiedSeverity: 'warn' });
     assert.equal(strict.messages[1]!.severity, 'warn');
+});
+
+test('binding check reports a result with no citations when configured to', () => {
+    for (const result of [{ content: text('A figure.') }, { content: text('A figure.'), citations: [] }]) {
+        assert.deepEqual(checkBinding(result).messages, []);
+        assert.deepEqual(
+            checkBinding(result, { uncitedSeverity: 'warn' }).messages.map(message => [message.path, message.severity]),
+            [['citations', 'warn']]
+        );
+    }
+    assert.deepEqual(checkBinding({ content: text('x'), citations: [{ name: 'A', url: URL_A }] }, { uncitedSeverity: 'warn' }).messages, []);
+});
+
+test('license check wants a license, and someone to credit when the license requires it', () => {
+    const CC_BY = 'https://creativecommons.org/licenses/by/4.0/';
+    const result = {
+        content: text('No markers.'),
+        citations: [
+            { name: 'A', license: CC_BY, publisher: { '@type': 'Organization', name: 'Office' } },
+            { name: 'B', license: 'ODbL-1.0', author: [{ name: 'Someone' }] },
+            { name: 'C', license: 'https://creativecommons.org/publicdomain/zero/1.0/' },
+            { name: 'D', license: CC_BY, publisher: { name: ' ' } },
+            { name: 'E' },
+            { description: 'left to the binding check' }
+        ]
+    };
+    const { messages, info } = checkLicense(result);
+    assert.deepEqual(info, { licensed: 3, unlicensed: 1, uncredited: 1 });
+    assert.deepEqual(
+        messages.map(message => [message.path, message.severity]),
+        [
+            ['citations[3].license', 'error'],
+            ['citations[4].license', 'error']
+        ]
+    );
+    assert.equal(checkLicense(result, { missingSeverity: 'warn' }).messages[1]!.severity, 'warn');
+    assert.deepEqual(
+        listCitations(result).map(citation => citation.credit),
+        ['Office', 'Someone', undefined, undefined, undefined, undefined]
+    );
+});
+
+test('stripper leaves a citation whose only error is its license', async () => {
+    const result = { content: text(`One [c1].\n\n[c1]: ${URL_A}`), citations: [{ id: 'c1' }] };
+    assert.equal(checkLicense(result).messages[0]!.severity, 'error');
+    assert.deepEqual((await stripBadCitations(result, async () => undefined)).stripped, []);
 });
 
 test('unlink removes definitions and markers and keeps link text', () => {

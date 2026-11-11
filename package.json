@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "Audits SEP-3094 citations on tool results with SEP-2624 interceptors",
+  "description": "Audits SEP-3094 dataset citations on tool results with SEP-2624 interceptors",
   "type": "module",
   "engines": {
     "node": ">=24"

@@ -1,4 +1,4 @@
-// The three citation checks. Each takes a tools/call result and returns
+// The four citation checks. Each takes a tools/call result and returns
 // SEP-2624 validation messages. They are pure so the tests can call them
 // without an MCP connection.
 import { isIP } from 'node:net';
@@ -18,7 +18,7 @@ interface Parsed {
     messages: ValidationMessage[];
 }
 
-const STRING_FIELDS = ['id', 'name', 'url', 'text', 'description', 'thumbnailUrl', 'datePublished', 'display'] as const;
+const STRING_FIELDS = ['id', 'name', 'url', 'text', 'description', 'thumbnailUrl', 'datePublished', 'display', 'license'] as const;
 
 function parse(result: CitedToolResult): Parsed {
     const text = (Array.isArray(result.content) ? result.content : [])
@@ -60,6 +60,14 @@ function destination(citation: Citation, links: ParsedLinks): string | undefined
     return citation.url || markdownDestination(citation, links);
 }
 
+/** The name of a schema.org Person or Organization, given as a string, an object, or a list. */
+function partyName(party: unknown): string | undefined {
+    if (typeof party === 'string') return party.trim() || undefined;
+    if (Array.isArray(party)) return party.map(partyName).find(Boolean);
+    if (party && typeof party === 'object') return partyName((party as { name?: unknown }).name);
+    return undefined;
+}
+
 export interface CitationInfo {
     index: number;
     /** The citation's `id`, else its `name`, else its index. */
@@ -67,6 +75,9 @@ export interface CitationInfo {
     name?: string;
     url?: string;
     quote?: string;
+    license?: string;
+    /** The name of the `publisher`, else of the `author`. */
+    credit?: string;
 }
 
 /** One entry per citation object, with the destination a client would open. */
@@ -74,12 +85,15 @@ export function listCitations(result: CitedToolResult): CitationInfo[] {
     const { links, citations } = parse(result);
     return citations.map(({ index, citation }) => {
         const url = destination(citation, links);
+        const credit = partyName(citation.publisher) ?? partyName(citation.author);
         return {
             index,
             key: citation.id ?? citation.name ?? `#${index}`,
             ...(citation.name && { name: citation.name }),
             ...(url && { url }),
-            ...(citation.text && { quote: citation.text })
+            ...(citation.text && { quote: citation.text }),
+            ...(citation.license && { license: citation.license }),
+            ...(credit && { credit })
         };
     });
 }
@@ -89,9 +103,17 @@ function shape(label: string): string {
     return label.replace(/\d+/g, 'N');
 }
 
+export interface BindingConfig {
+    /** Severity for a result with no citations at all. Default: not reported. */
+    uncitedSeverity?: Severity;
+}
+
 /** Checks that markers in the text and entries in `citations` line up. */
-export function checkBinding(result: CitedToolResult): CheckOutput {
+export function checkBinding(result: CitedToolResult, config: BindingConfig = {}): CheckOutput {
     const { links, citations, messages } = parse(result);
+    if (config.uncitedSeverity && (result.citations === undefined || (Array.isArray(result.citations) && result.citations.length === 0))) {
+        messages.push({ path: 'citations', message: 'result carries no citations, so its claims cannot be traced to a source', severity: config.uncitedSeverity });
+    }
     const ids = new Map<string, number>();
     let nameKeyed = 0;
     let blockLevel = 0;
@@ -275,6 +297,47 @@ export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup,
     return { messages, info: counts };
 }
 
+export interface LicenseConfig {
+    /** Severity for a citation with no `license`. Default: error. */
+    missingSeverity?: Severity;
+}
+
+// Creative Commons and Open Data Commons licenses whose terms require credit.
+const REQUIRES_ATTRIBUTION = /creativecommons\.org\/licenses\/by|opendatacommons\.org\/licenses\/(by|odbl)|\bCC[ -]BY\b|\bODbL\b|\bODC-BY\b/i;
+
+/**
+ * Checks that each citation says under what terms its source may be reused,
+ * and names someone to credit when those terms require attribution.
+ */
+export function checkLicense(result: CitedToolResult, config: LicenseConfig = {}): CheckOutput {
+    const { citations, messages } = parse(result);
+    const counts = { licensed: 0, unlicensed: 0, uncredited: 0 };
+
+    for (const { index, citation } of citations) {
+        // The binding check reports an entry with nothing to identify it.
+        if (!citation.id && !citation.name && !citation.url) continue;
+        const path = `citations[${index}]`;
+        if (!citation.license) {
+            counts.unlicensed++;
+            messages.push({
+                path: `${path}.license`,
+                message: 'citation has no `license`, so the terms of reuse are unknown',
+                severity: config.missingSeverity ?? 'error'
+            });
+        } else if (REQUIRES_ATTRIBUTION.test(citation.license) && !partyName(citation.publisher) && !partyName(citation.author)) {
+            counts.uncredited++;
+            messages.push({
+                path: `${path}.license`,
+                message: `license requires attribution and the citation names no \`publisher\` or \`author\`: ${citation.license}`,
+                severity: 'error'
+            });
+        } else {
+            counts.licensed++;
+        }
+    }
+    return { messages, info: counts };
+}
+
 export interface Stripped {
     index: number;
     id?: string;
@@ -288,9 +351,10 @@ export interface StripOutput {
 }
 
 /**
- * Removes every citation that one of the checks reports at severity "error",
- * along with its marker and link definition in the text. The claim itself
- * stays, uncited. Warnings and infos do not strip.
+ * Removes every citation that the binding, URL policy, or quote check reports
+ * at severity "error", along with its marker and link definition in the text.
+ * The claim itself stays, uncited. Warnings and infos do not strip. A license
+ * error does not strip either: removing the citation removes the credit.
  */
 export async function stripBadCitations(result: CitedToolResult, lookup: SourceLookup, config: UrlPolicyConfig = {}): Promise<StripOutput> {
     const outputs = [checkBinding(result), checkUrlPolicy(result, config), await checkQuotes(result, lookup)];

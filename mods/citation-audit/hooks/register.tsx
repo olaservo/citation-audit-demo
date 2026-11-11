@@ -25,12 +25,15 @@ async function currentMode($: EngineInterface, configured: AuditMode): Promise<A
 }
 
 function counts(citations: readonly CitationRow[]): string {
+  if (citations.length === 0) return 'no citations'
   const of = (status: CitationRow['status']) => citations.filter(c => c.status === status).length
   return [`${of('kept')} kept`, ...(of('stripped') ? [`${of('stripped')} stripped`] : []), ...(of('flagged') ? [`${of('flagged')} flagged`] : [])].join(', ')
 }
 
 function citationLine(c: CitationRow): string {
-  return [`[${c.key}]`, c.name, c.url, c.quote && `quote ${c.quote}`].filter(Boolean).join('  ')
+  return [`[${c.key}]`, c.name, c.url, c.license && `license ${c.license}`, c.credit && `credit ${c.credit}`, c.quote && `quote ${c.quote}`]
+    .filter(Boolean)
+    .join('  ')
 }
 
 /** "audit · 2 kept, 3 flagged", each count in its status colour. */
@@ -39,6 +42,7 @@ function summary({ Text }: Els, audit: AuditRecord) {
   if (audit.outcome === 'blocked') {
     return [<Text dimColor>{audit.mode} · </Text>, <Text color="error">blocked ({audit.error?.code})</Text>]
   }
+  if (audit.citations.length === 0) return [<Text dimColor>{audit.mode} · </Text>, <Text color="warning">no citations</Text>]
   return [
     <Text dimColor>{audit.mode} · </Text>,
     <Text color="success">{of('kept')} kept</Text>,
@@ -58,13 +62,29 @@ function shortReason(reasons: readonly string[]): string {
 
 /**
  * One line per citation, the ones a check failed first. Only a citation that
- * passed every check is drawn as a link.
+ * passed every check is drawn with a link, after its license and who to
+ * credit. The link has no label: a terminal without hyperlinks draws a
+ * labelled link as the label and then the URL, which pushed the rest off the row.
+ * An answer with no citations gets one line saying so.
  */
-function citationRows({ Box, Link, Text }: Els, citations: readonly CitationRow[]) {
+function citationRows({ Box, Button, Link, Text }: Els, citations: readonly CitationRow[], open?: (url: string) => void) {
+  if (citations.length === 0) {
+    return [
+      <Box>
+        <Box flexShrink={0}>
+          <Text color="warning">{MARK.flagged} {'uncited'.padEnd(9)}</Text>
+        </Box>
+        <Text dimColor wrap="truncate-end">the answer names no dataset, so its figures cannot be traced to a source</Text>
+      </Box>,
+    ]
+  }
   const failedFirst = [...citations].sort((a, b) => Number(a.status === 'kept') - Number(b.status === 'kept'))
-  return failedFirst.map(c => {
+  return failedFirst.map((c, i) => {
+    const url = c.status === 'kept' ? c.url : undefined
     const word = c.status === 'kept' && c.quote === 'verified' ? 'verified' : c.status
-    const label = [`[${c.key}]`, c.name].filter(Boolean).join(' ')
+    // A citation with no id is keyed by its name: show the name once.
+    const key = c.key === c.name ? '' : `[${c.key}]`
+    const label = [key, c.name].filter(Boolean).join(' ')
     return (
       <Box>
         <Box flexShrink={0}>
@@ -72,8 +92,18 @@ function citationRows({ Box, Link, Text }: Els, citations: readonly CitationRow[
             {MARK[c.status]} {word.padEnd(9)}
           </Text>
         </Box>
+        {open && url && (
+          <Box flexShrink={0} marginRight={1}>
+            <Button key={`open-${i}`} label="open" onPress={() => open(url)} />
+          </Box>
+        )}
         {c.status === 'kept' ? (
-          <Text wrap="truncate-end">{c.url ? <Link href={c.url} label={label} /> : label}</Text>
+          <Text wrap="truncate-end">
+            {label}
+            <Text dimColor>{[c.license, c.credit].map(part => (part ? ` · ${part}` : '')).join('')}</Text>
+            {c.url && <Text dimColor> · </Text>}
+            {c.url && <Link href={c.url} />}
+          </Text>
         ) : (
           [
             <Box flexShrink={0}>
@@ -91,6 +121,18 @@ function citationRows({ Box, Link, Text }: Els, citations: readonly CitationRow[
 }
 
 /**
+ * Opens a URL in the person's browser. A row may cut a long URL short, and a
+ * terminal that finds links in the text then opens the shortened address.
+ */
+async function openUrl($: EngineInterface, url: string): Promise<void> {
+  const isWindows = (await $.env.get('OS')) === 'Windows_NT'
+  // Neither form passes the URL through a shell's parser.
+  const argv = isWindows ? ['rundll32', 'url.dll,FileProtocolHandler', url] : ['sh', '-c', 'open "$0" 2>/dev/null || xdg-open "$0"', url]
+  const ran = await $.process.run(argv, { timeoutMs: 10_000 })
+  if (ran.exitCode !== 0) $.ui.toast(`Could not open ${url}`)
+}
+
+/**
  * Runs the host in src/audit-cli.ts: it calls the tool itself, as a client
  * that declares citations, and runs the interceptors over the result. Claude
  * Code's own MCP client drops the top-level `citations` field.
@@ -98,7 +140,7 @@ function citationRows({ Box, Link, Text }: Els, citations: readonly CitationRow[
 async function runAudit($: EngineInterface, dir: string, current: AuditMode, args: Record<string, unknown>): Promise<AuditReport> {
   const ran = await $.process.run(['node', '--import', 'tsx', 'src/audit-cli.ts', current], {
     cwd: dir,
-    stdin: JSON.stringify({ name: 'research', arguments: args }),
+    stdin: JSON.stringify({ name: 'statistics', arguments: args }),
     timeoutMs: 60_000,
   })
   if (ran.exitCode !== 0) throw new Error(ran.stderr.trim().split('\n').pop() || `audit-cli exited ${ran.exitCode}`)
@@ -123,7 +165,7 @@ function contextFor(report: AuditReport): string {
 }
 
 export const register: Register = (on, options) => {
-  const tool = `mcp__${String(options.server || 'research')}__research`
+  const tool = `mcp__${String(options.server || 'portal')}__statistics`
   const configured: AuditMode = isMode(options.mode) ? options.mode : 'audit'
 
   on('session.start', async ($, e, next) => {
@@ -196,7 +238,7 @@ export const register: Register = (on, options) => {
   })
 
   // The transcript folds finished calls into one count line. Unfold a group
-  // that holds a research call, so its row and citations stay on screen.
+  // that holds a statistics call, so its row and citations stay on screen.
   on('ui.render', { component: 'ToolGroup' }, ($, e, next) =>
     e.props.calls.some(c => c.tool === tool) ? next({ ...e, props: { ...e.props, isExpanded: true } }) : next(e),
   )
@@ -221,11 +263,11 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column">
         <Box>
           <Text bold>Citations </Text>
-          <Text dimColor>research({last.topic}) · </Text>
+          <Text dimColor>statistics({last.topic}) · </Text>
           {summary(els, last)}
           {isWide && buttons}
         </Box>
-        {citationRows(els, last.citations)}
+        {citationRows(els, last.citations, url => openUrl($, url))}
         {!isWide && buttons}
       </Box>
     )
@@ -245,14 +287,14 @@ export const register: Register = (on, options) => {
             <Button key={`mode-${m}`} label={m} hotkey={String(i + 1)} variant={m === current ? 'primary' : 'secondary'} onPress={() => update($, mode, () => m)} />
           ))}
         </Box>
-        {!last && <Text dimColor>No audits yet. Ask for research on judicial-review or severance.</Text>}
+        {!last && <Text dimColor>No audits yet. Ask for statistics on population, unemployment, or inflation.</Text>}
         {last && (
           <Box flexDirection="column">
             <Box>
-              <Text bold>research({last.topic}) </Text>
+              <Text bold>statistics({last.topic}) </Text>
               {summary(els, last)}
             </Box>
-            {citationRows(els, last.citations)}
+            {citationRows(els, last.citations, url => openUrl($, url))}
             <Text dimColor>{last.findings.length ? 'Findings' : 'No findings.'}</Text>
             {last.findings.map(f => (
               <Box>

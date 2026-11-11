@@ -1,6 +1,6 @@
-// Terminal demo. Calls the `research` tool four times and prints what the
-// host's audit of each result found and delivered.
-import { callAndAudit, closeHost, MODES, startHost } from './host.ts';
+// Terminal demo. Calls the `statistics` tool and prints what the host's
+// audit of each result found and delivered.
+import { callAndAudit, closeHost, connect, MODES, startHost } from './host.ts';
 import type { MutationSummary, ValidationSummary } from './invoker.ts';
 import { INTERCEPTORS_EXTENSION, type Citation, type CitedToolResult, type InterceptorOverrides } from './types.ts';
 
@@ -56,7 +56,7 @@ const host = await startHost();
 
 const extension = host.interceptorServer.getServerCapabilities()?.extensions?.[INTERCEPTORS_EXTENSION];
 console.log(
-    `Negotiated protocol: research ${host.research.getNegotiatedProtocolVersion()}, interceptors ${host.interceptorServer.getNegotiatedProtocolVersion()}`
+    `Negotiated protocol: portal ${host.portal.getNegotiatedProtocolVersion()}, interceptors ${host.interceptorServer.getNegotiatedProtocolVersion()}`
 );
 console.log(`Interceptor Server capability ${INTERCEPTORS_EXTENSION}: ${JSON.stringify(extension)}`);
 
@@ -68,8 +68,8 @@ for (const interceptor of host.interceptors) {
 
 async function run(title: string, topic: string, overrides: Record<string, InterceptorOverrides> = {}): Promise<void> {
     console.log(`\n=== ${title} ===`);
-    const audit = await callAndAudit(host, 'research', { topic }, overrides);
-    console.log(`tools/call research(${topic}) returned ${citationsOf(audit.result).length} citations`);
+    const audit = await callAndAudit(host, 'statistics', { topic }, overrides);
+    console.log(`tools/call statistics(${topic}) returned ${citationsOf(audit.result).length} citations`);
 
     console.log('validate:');
     printValidation(audit.validation);
@@ -83,15 +83,43 @@ async function run(title: string, topic: string, overrides: Record<string, Inter
     }
 
     const kept = citationsOf(audit.delivered).map(citation => citation.id ?? citation.name ?? '(no key)');
-    console.log(`DELIVERED with ${kept.length} citations (${kept.join(', ')}).`);
+    console.log(`DELIVERED with ${kept.length} citations${kept.length > 0 ? ` (${kept.join(', ')})` : ''}.`);
     if (audit.mutation?.outcomes.some(outcome => outcome.applied)) {
         console.log(audit.delivered.content?.map(block => block.text?.trimEnd()).join('\n').replace(/^/gm, '    | '));
     }
 }
 
-await run('1. Sound citations, server defaults (audit)', 'judicial-review');
-await run('2. Flawed citations, server defaults (audit)', 'severance');
-await run('3. Flawed citations, invoker promotes the stripper to active', 'severance', MODES.strip);
-await run('4. Flawed citations, invoker also promotes two validators to active', 'severance', MODES.block);
+await run('1. Sound citations, server defaults (audit)', 'population');
+await run('2. Flawed citations, server defaults (audit)', 'unemployment');
+await run('3. Flawed citations, invoker promotes the stripper to active', 'unemployment', MODES.strip);
+await run('4. Flawed citations, invoker also promotes three validators to active', 'unemployment', MODES.block);
+await run('5. An answer with no citations, server defaults (audit)', 'inflation');
+
+console.log('\n=== 6. A client that does not declare citations ===');
+for (const [policy, env] of [
+    ['SEP-3094 default', undefined],
+    ['PORTAL_REQUIRE_RENDER=1', { PORTAL_REQUIRE_RENDER: '1' }]
+] as const) {
+    const plain = await connect('./portal-server.ts', {}, env);
+    const result = (await plain.callTool({ name: 'statistics', arguments: { topic: 'population' } })) as CitedToolResult & { isError?: boolean };
+    const outcome = result.isError ? 'a tool error' : `the text and ${result.citations === undefined ? 'no `citations` field' : `${citationsOf(result).length} citations`}`;
+    console.log(`${policy}: tools/call statistics(population) returned ${outcome}`);
+    if (result.isError) console.log(result.content?.map(block => block.text).join('\n').replace(/^/gm, '    | '));
+    await plain.close();
+}
+
+console.log('\n=== 7. The same client through a gateway that is the invoker ===');
+for (const mode of ['strip', 'block']) {
+    const viaGateway = await connect('./gateway.ts', {}, { GATEWAY_MODE: mode });
+    try {
+        const result = (await viaGateway.callTool({ name: 'statistics', arguments: { topic: 'unemployment' } })) as CitedToolResult;
+        console.log(`GATEWAY_MODE=${mode}: delivered, ${result.citations === undefined ? 'no `citations` field' : `${citationsOf(result).length} citations`}`);
+        console.log(result.content?.map(block => block.text?.trimEnd()).join('\n').replace(/^/gm, '    | '));
+    } catch (error) {
+        const { code, message } = error as { code?: number; message: string };
+        console.log(`GATEWAY_MODE=${mode}: error ${code} ${message}`);
+    }
+    await viaGateway.close();
+}
 
 await closeHost(host);

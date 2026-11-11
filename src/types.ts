@@ -131,6 +131,8 @@ export interface Citation {
     datePublished?: string;
     author?: unknown;
     publisher?: unknown;
+    /** schema.org CreativeWork `license`: a URL or a name. Not in the SEP's subset. */
+    license?: string;
     display?: 'embedded' | 'external' | 'auto';
 }
 

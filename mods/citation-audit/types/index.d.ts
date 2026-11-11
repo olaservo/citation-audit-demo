@@ -16,6 +16,10 @@ export type CitationRow = {
   /** `flagged`: a check reported an error and the citation was not removed. */
   status: 'kept' | 'stripped' | 'flagged'
   quote?: 'verified' | 'not found' | 'unverified'
+  /** A short name for the citation's license, such as "CC BY 4.0". */
+  license?: string
+  /** The publisher or author to credit. */
+  credit?: string
   reasons: string[]
 }
 

@@ -1,0 +1,9 @@
+Northmark Youth Unemployment (fictional)
+
+Invented for the demo. Northmark is not a real place and data.example.org is not a real portal.
+
+Dataset: https://data.example.org/dataset/northmark-youth-unemployment
+Publisher: Northmark Statistics Office (fictional)
+License: Creative Commons Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/)
+
+The youth unemployment rate in Northmark was 12.4 percent in October 2026.

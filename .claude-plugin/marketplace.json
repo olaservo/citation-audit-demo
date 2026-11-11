@@ -8,7 +8,7 @@
     {
       "name": "citation-audit",
       "source": "./mods/citation-audit",
-      "description": "Audit the research server's citations with interceptors and draw them under the tool call"
+      "description": "Audit an open data portal's dataset citations with interceptors and show them above the prompt"
     }
   ]
 }

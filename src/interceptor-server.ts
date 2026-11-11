@@ -1,4 +1,4 @@
-// Interceptor Server (SEP-2624): hosts three citation validators and one
+// Interceptor Server (SEP-2624): hosts four citation validators and one
 // mutator, and nothing else. Serves `interceptors/list` and
 // `interceptor/invoke` over stdio.
 import { readFile } from 'node:fs/promises';
@@ -9,7 +9,7 @@ import { McpServer, ProtocolError } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 
-import { checkBinding, checkQuotes, checkUrlPolicy, stripBadCitations, type CheckOutput, type SourceLookup } from './citation-checks.ts';
+import { checkBinding, checkLicense, checkQuotes, checkUrlPolicy, stripBadCitations, type CheckOutput, type SourceLookup } from './citation-checks.ts';
 import {
     INTERCEPTORS_EXTENSION,
     InvokeParamsSchema,
@@ -44,9 +44,10 @@ const ALLOWED_SCHEMES = { type: 'array', items: { type: 'string' }, default: ['h
 
 // SEP-2624: configuration and payloads MUST be validated before processing.
 // Each `config` enforces the `configSchema` its descriptor advertises.
-const NoConfig = z.strictObject({});
+const BindingConfig = z.strictObject({ uncitedSeverity: z.enum(['info', 'warn', 'error']).optional() });
 const SchemesConfig = z.strictObject({ allowedSchemes: z.array(z.string()).optional() });
 const QuoteConfig = z.strictObject({ unverifiedSeverity: z.enum(['info', 'warn', 'error']).optional() });
+const LicenseConfig = z.strictObject({ missingSeverity: z.enum(['info', 'warn', 'error']).optional() });
 const PayloadSchema = z.looseObject({ content: z.array(z.looseObject({ type: z.string() })).optional() });
 
 const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; check?: Check; mutate?: Mutate }> = [
@@ -58,10 +59,14 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
             type: 'validation',
             hooks: HOOKS,
             mode: 'audit',
-            configSchema: { type: 'object', additionalProperties: false }
+            configSchema: {
+                type: 'object',
+                properties: { uncitedSeverity: { type: 'string', enum: ['info', 'warn', 'error'] } },
+                additionalProperties: false
+            }
         },
-        config: NoConfig,
-        check: result => checkBinding(result)
+        config: BindingConfig,
+        check: (result, config) => checkBinding(result, config)
     },
     {
         descriptor: {
@@ -94,6 +99,23 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
         },
         config: QuoteConfig,
         check: (result, config) => checkQuotes(result, lookupSource, config)
+    },
+    {
+        descriptor: {
+            name: 'citation-license',
+            version: '0.1.0',
+            description: 'Checks that each citation carries a `license`, and names a publisher or author when the license requires attribution',
+            type: 'validation',
+            hooks: HOOKS,
+            mode: 'audit',
+            configSchema: {
+                type: 'object',
+                properties: { missingSeverity: { type: 'string', enum: ['info', 'warn', 'error'], default: 'error' } },
+                additionalProperties: false
+            }
+        },
+        config: LicenseConfig,
+        check: (result, config) => checkLicense(result, config)
     },
     {
         descriptor: {

@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "research": {
+    "portal": {
       "command": "node",
-      "args": ["--import", "tsx", "src/research-server.ts"]
+      "args": ["--import", "tsx", "src/portal-server.ts"]
     }
   }
 }

@@ -1,19 +1,19 @@
 {
   "name": "citation-audit",
   "version": "0.1.0",
-  "description": "Audits the citations on the research server's tool results with interceptors and draws them under the tool call",
+  "description": "Audits the dataset citations on an open data portal's tool results with interceptors and shows them above the prompt",
   "types": "./types/index.d.ts",
   "userConfig": {
     "server": {
       "type": "string",
-      "title": "Research MCP server",
-      "description": "The research server's name in /mcp. Its `research` tool is the one audited",
-      "default": "research"
+      "title": "Portal MCP server",
+      "description": "The portal server's name in /mcp. Its `statistics` tool is the one audited",
+      "default": "portal"
     },
     "mode": {
       "type": "string",
       "title": "Audit mode",
-      "description": "audit: report only. strip: remove citations that fail a check. block: refuse a result with a failing citation",
+      "description": "audit: report only. strip: remove citations that fail a check, except a license check. block: refuse a result with a failing citation",
       "options": ["audit", "strip", "block"],
       "default": "audit"
     },

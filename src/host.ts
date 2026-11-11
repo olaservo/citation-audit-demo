@@ -1,6 +1,7 @@
 // The host: an MCP client of both servers and the invoker in SEP-2624 terms.
-// Calls a tool on the research server and audits the result's citations on
-// the response phase. Used by the terminal demo and by the Claude Code mod.
+// Calls a tool on the portal server and audits the result's citations on
+// the response phase. Used by the terminal demo, the Claude Code mod, and
+// the gateway.
 import { fileURLToPath } from 'node:url';
 
 import { Client } from '@modelcontextprotocol/client';
@@ -36,51 +37,55 @@ export const MODES: Record<Mode, Record<string, InterceptorOverrides>> = {
     block: {
         'citation-url-policy': { mode: 'active' },
         'citation-quote-check': { mode: 'active', timeoutMs: 2000 },
+        'citation-license': { mode: 'active' },
         'citation-stripper': { mode: 'active', timeoutMs: 2000 }
     }
 };
 
 const CONFIG: Record<string, Record<string, unknown>> = {
+    // Warn the reader when an answer names no source at all.
+    'citation-binding': { uncitedSeverity: 'warn' },
     'citation-url-policy': { allowedSchemes: ['https'] },
     'citation-stripper': { allowedSchemes: ['https'] }
 };
 
 export interface Host {
-    research: Client;
+    portal: Client;
     interceptorServer: Client;
     interceptors: Interceptor[];
 }
 
-async function connect(script: string, capabilities: Record<string, unknown> = {}): Promise<Client> {
+export async function connect(script: string, capabilities: Record<string, unknown> = {}, env?: Record<string, string>): Promise<Client> {
     const client = new Client({ name: 'citation-audit-host', version: '0.1.0' }, { capabilities, versionNegotiation: { mode: 'auto' } });
     await client.connect(
         new StdioClientTransport({
             command: process.execPath,
             // Resolved here so the servers start from any working directory.
             args: ['--import', import.meta.resolve('tsx'), fileURLToPath(new URL(script, import.meta.url))],
+            ...(env && { env: { ...(process.env as Record<string, string>), ...env } }),
             stderr: 'ignore'
         })
     );
     return client;
 }
 
-export async function startHost(): Promise<Host> {
-    // SEP-3094: declare that this client understands and renders citations.
-    const research = await connect('./research-server.ts', { extensions: { [CITATIONS_EXTENSION]: { render: {} } } });
+/** `citations`: the SEP-3094 capability to declare. The default says this client renders citations. */
+export async function startHost(citations: Record<string, unknown> = { render: {} }): Promise<Host> {
+    const portal = await connect('./portal-server.ts', { extensions: { [CITATIONS_EXTENSION]: citations } });
     const interceptorServer = await connect('./interceptor-server.ts');
     if (!interceptorServer.getServerCapabilities()?.extensions?.[INTERCEPTORS_EXTENSION]) {
         throw new Error(`the Interceptor Server does not declare ${INTERCEPTORS_EXTENSION}`);
     }
-    return { research, interceptorServer, interceptors: await discover(interceptorServer, 'tools/call') };
+    return { portal, interceptorServer, interceptors: await discover(interceptorServer, 'tools/call') };
 }
 
 export async function closeHost(host: Host): Promise<void> {
-    await host.research.close();
+    await host.portal.close();
     await host.interceptorServer.close();
 }
 
 export interface Audit {
-    /** The result as the research server returned it. */
+    /** The result as the portal server returned it. */
     result: CitedToolResult;
     validation: ValidationSummary;
     /** Absent when validation blocked. */
@@ -105,7 +110,7 @@ export async function callAndAudit(
         config: CONFIG[interceptor.name]
     }));
 
-    const result = (await host.research.callTool({ name, arguments: args })) as CitedToolResult;
+    const result = (await host.portal.callTool({ name, arguments: args })) as CitedToolResult;
     const context = newContext();
     const validation = await runValidators(selected, 'tools/call', 'response', result, context);
     if (validation.blocked) return { result, validation, error: validationError(validation) };
@@ -131,6 +136,10 @@ export interface CitationRow {
     /** `flagged`: a check reported an error and the citation was not removed. */
     status: 'kept' | 'stripped' | 'flagged';
     quote?: 'verified' | 'not found' | 'unverified';
+    /** A short name for the citation's `license`, such as "CC BY 4.0". */
+    license?: string;
+    /** The publisher or author to credit. */
+    credit?: string;
     reasons: string[];
 }
 
@@ -145,6 +154,12 @@ export interface AuditReport {
     findings: Finding[];
 }
 
+/** "CC BY-SA 4.0" for a Creative Commons URL, else the value as written. */
+function licenseLabel(license: string): string {
+    const cc = /creativecommons\.org\/licenses\/([a-z-]+)\/(\d+\.\d+)/i.exec(license);
+    return cc ? `CC ${cc[1]!.toUpperCase()} ${cc[2]}` : license;
+}
+
 /** A flat report of one audit, for a client that renders the citations. */
 export function report(audit: Audit, mode: Mode): AuditReport {
     const findings: Finding[] = audit.validation.outcomes.flatMap(outcome =>
@@ -156,8 +171,8 @@ export function report(audit: Audit, mode: Mode): AuditReport {
     const stripped = new Set(applied.flatMap(outcome => ((outcome.result?.info?.stripped ?? []) as Array<{ index: number }>).map(entry => entry.index)));
     const quoteChecked = audit.validation.outcomes.some(outcome => outcome.interceptor === 'citation-quote-check' && outcome.result);
 
-    const citations = listCitations(audit.result).map(({ index, key, name, url, quote }): CitationRow => {
-        const own = findings.filter(finding => finding.path?.startsWith(`citations[${index}]`));
+    const citations = listCitations(audit.result).map(({ index, key, name, url, quote, license, credit }): CitationRow => {
+        const own = findings.filter(finding => new RegExp(`^citations\\[${index}\\]`).test(finding.path ?? ''));
         const reasons = own.filter(finding => finding.severity === 'error').map(finding => finding.message);
         const quoteFinding = own.find(finding => finding.path === `citations[${index}].text`);
         return {
@@ -166,6 +181,8 @@ export function report(audit: Audit, mode: Mode): AuditReport {
             ...(url && { url }),
             status: stripped.has(index) ? 'stripped' : reasons.length > 0 ? 'flagged' : 'kept',
             ...(quote && quoteChecked && { quote: !quoteFinding ? 'verified' : quoteFinding.severity === 'error' ? 'not found' : 'unverified' }),
+            ...(license && { license: licenseLabel(license) }),
+            ...(credit && { credit }),
             reasons
         };
     });

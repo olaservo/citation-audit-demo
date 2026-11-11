@@ -1,4 +1,6 @@
 {
-  "https://www.law.cornell.edu/supremecourt/text/5/137": "marbury-v-madison.txt",
-  "https://handbook.example.com/employee-handbook": "employee-handbook.txt"
+  "https://data.gov.ie/dataset/pea01-population-estimates-persons-in-april": "PEA01.txt",
+  "https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment": "MUM01.txt",
+  "https://data.example.org/dataset/northmark-youth-unemployment": "northmark-youth-unemployment.txt",
+  "https://data.example.org/dataset/northmark-weekly-earnings": "northmark-weekly-earnings.txt"
 }

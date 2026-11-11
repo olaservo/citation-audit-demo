@@ -1,0 +1,9 @@
+Northmark Average Weekly Earnings (fictional)
+
+Invented for the demo. Northmark is not a real place and data.example.org is not a real portal.
+
+Dataset: https://data.example.org/dataset/northmark-weekly-earnings
+Publisher: none named
+License: Creative Commons Attribution Share-Alike 4.0 (https://creativecommons.org/licenses/by-sa/4.0/)
+
+Average weekly earnings in Northmark rose 3.1 percent over the year to the second quarter of 2026.
