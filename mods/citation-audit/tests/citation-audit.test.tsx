@@ -91,7 +91,7 @@ test('the tool row lists the citations and links only a kept one', async ($, on)
     expect((await ui.find({ type: 'Text', text: /^citations/ }))?.text).toContain('citations')
     expect((await ui.find({ type: 'Text', text: /stripped$/ }))?.text).toBe('1 stripped')
     expect((await ui.find({ type: 'Link' }))?.props.href).toBe('https://handbook.example.com/a')
-    expect((await ui.find({ type: 'Text', text: /stripped: / }))?.text).toContain('quoted text does not appear')
+    expect((await ui.find({ type: 'Text', text: /quoted text/ }))?.text).toContain('quoted text does not appear')
     await ui.unmount()
   }
 })
@@ -130,8 +130,9 @@ test('the pane lists the last audit, on every surface', async ($, on) => {
       surface,
       props: { title: 'Citation audit', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
     })
-    expect((await ui.find({ type: 'Text', text: /research\(severance\)/ }))?.text).toContain('strip · delivered')
-    expect((await ui.find({ type: 'Text', text: /^- \[c2\]/ }))?.text).toContain('quote not found')
+    expect(await ui.find({ type: 'Text', text: /research\(severance\)/ })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: /stripped$/ }))?.text).toBe('1 stripped')
+    expect((await ui.find({ type: 'Text', text: /^quote-check/ }))?.text).toBe('quote-check ')
     await ui.unmount()
   }
 })

@@ -47,17 +47,47 @@ function summary({ Text }: Els, audit: AuditRecord) {
   ]
 }
 
-/** One line per citation. Only one that passed every check is drawn as a link. */
+/** The first reason without the URL or quote it ends in, after a count of them. */
+function shortReason(reasons: readonly string[]): string {
+  const first = (reasons[0] ?? '')
+    .replace(/: (https?:|file:|")[\s\S]*$/, '')
+    .replace(/ in https?:\S+$/, ' in the source')
+    .replaceAll('`', '')
+  return reasons.length > 1 ? `${reasons.length} checks failed: ${first}` : first
+}
+
+/**
+ * One line per citation, the ones a check failed first. Only a citation that
+ * passed every check is drawn as a link.
+ */
 function citationRows({ Box, Link, Text }: Els, citations: readonly CitationRow[]) {
-  return citations.map(c => (
-    <Box>
-      <Text color={COLOR[c.status]}>{MARK[c.status]} </Text>
-      {c.status === 'kept' && c.url ? <Link href={c.url} label={`[${c.key}] ${c.name ?? c.url}`} /> : <Text>{`[${c.key}] ${c.name ?? ''}`}</Text>}
-      <Text dimColor wrap="truncate-end">
-        {c.status === 'kept' ? (c.quote ? `  quote ${c.quote}` : '') : `  ${c.status}: ${c.reasons[0] ?? ''}`}
-      </Text>
-    </Box>
-  ))
+  const failedFirst = [...citations].sort((a, b) => Number(a.status === 'kept') - Number(b.status === 'kept'))
+  return failedFirst.map(c => {
+    const word = c.status === 'kept' && c.quote === 'verified' ? 'verified' : c.status
+    const label = [`[${c.key}]`, c.name].filter(Boolean).join(' ')
+    return (
+      <Box>
+        <Box flexShrink={0}>
+          <Text color={COLOR[c.status]}>
+            {MARK[c.status]} {word.padEnd(9)}
+          </Text>
+        </Box>
+        {c.status === 'kept' ? (
+          <Text wrap="truncate-end">{c.url ? <Link href={c.url} label={label} /> : label}</Text>
+        ) : (
+          [
+            <Box flexShrink={0}>
+              <Text>{label}</Text>
+            </Box>,
+            <Text dimColor wrap="truncate-end">
+              {' · '}
+              {shortReason(c.reasons)}
+            </Text>,
+          ]
+        )}
+      </Box>
+    )
+  })
 }
 
 /**
@@ -79,6 +109,8 @@ async function runAudit($: EngineInterface, dir: string, current: AuditMode, arg
 function contextFor(report: AuditReport): string {
   const by = (status: CitationRow['status']) => report.citations.filter(c => c.status === status)
   const withReasons = (c: CitationRow) => `- [${c.key}] ${c.reasons.join('; ')}`
+  // A marker with no entry is a finding on `content`, not on a citation.
+  const other = report.findings.filter(f => f.severity !== 'info' && !f.path?.startsWith('citations['))
   return [
     `Citation audit (mode ${report.mode}): ${counts(report.citations)}.`,
     ...(by('kept').length ? ['Citations delivered with this result:', ...by('kept').map(c => `- ${citationLine(c)}`)] : []),
@@ -86,6 +118,7 @@ function contextFor(report: AuditReport): string {
       ? ['Removed from the result because a check failed. Those claims are now uncited, so do not present them as sourced:', ...by('stripped').map(withReasons)]
       : []),
     ...(by('flagged').length ? ['Delivered, but a check failed. Say so if you rely on them:', ...by('flagged').map(withReasons)] : []),
+    ...(other.length ? ['Findings about the text:', ...other.map(f => `- ${f.severity}: ${f.message}`)] : []),
   ].join('\n')
 }
 
@@ -174,25 +207,33 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey || !last || (await read($, hidden)) === last.id) return next(e)
     const els = $.ui.resolve(e)
     const { Box, Button, Text } = els
+    const buttons = (
+      <Box flexShrink={0} marginLeft={1}>
+        <Button key="details" label="Details" onPress={() => $.ui.open({ id: PANE, title: 'Citation audit' })} />
+        <Button key="hide" label="Hide" onPress={() => update($, hidden, () => last.id)} />
+      </Box>
+    )
+    // The band may be three rows tall, so the buttons share the first row
+    // where it is wide enough to hold them.
+    const isWide = e.props.bodyColumns >= 80
 
     return (
       <Box flexDirection="column">
         <Box>
-          <Text bold>Citation audit </Text>
+          <Text bold>Citations </Text>
           <Text dimColor>research({last.topic}) · </Text>
           {summary(els, last)}
+          {isWide && buttons}
         </Box>
         {citationRows(els, last.citations)}
-        <Box>
-          <Button key="details" label="Details" onPress={() => $.ui.open({ id: PANE, title: 'Citation audit' })} />
-          <Button key="hide" label="Hide" onPress={() => update($, hidden, () => last.id)} />
-        </Box>
+        {!isWide && buttons}
       </Box>
     )
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const els = $.ui.resolve(e)
+    const { Box, Button, Text } = els
     const current = await currentMode($, configured)
     const list = await read($, audits)
     const last = list.at(-1)
@@ -206,20 +247,23 @@ export const register: Register = (on, options) => {
         </Box>
         {!last && <Text dimColor>No audits yet. Ask for research on judicial-review or severance.</Text>}
         {last && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold>
-              research({last.topic}) · {last.mode} · {last.outcome}
-            </Text>
-            {last.citations.map(c => (
-              <Text color={COLOR[c.status]}>
-                {MARK[c.status]} {citationLine(c)}
-              </Text>
-            ))}
+          <Box flexDirection="column">
+            <Box>
+              <Text bold>research({last.topic}) </Text>
+              {summary(els, last)}
+            </Box>
+            {citationRows(els, last.citations)}
             <Text dimColor>{last.findings.length ? 'Findings' : 'No findings.'}</Text>
             {last.findings.map(f => (
-              <Text color={f.severity === 'error' ? 'error' : f.severity === 'warn' ? 'warning' : undefined}>
-                {f.severity.padEnd(5)} {f.interceptor}  {f.path ?? ''}  {f.message}
-              </Text>
+              <Box>
+                <Box flexShrink={0}>
+                  <Text color={f.severity === 'error' ? 'error' : f.severity === 'warn' ? 'warning' : undefined}>{f.severity.padEnd(6)}</Text>
+                  <Text>{f.interceptor.replace('citation-', '')} </Text>
+                </Box>
+                <Text dimColor wrap="truncate-end">
+                  {f.path ?? ''} · {f.message}
+                </Text>
+              </Box>
             ))}
             <Text dimColor>{list.length} audited calls this session.</Text>
           </Box>
