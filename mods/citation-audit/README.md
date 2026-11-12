@@ -32,6 +32,15 @@ Ask for statistics on `unemployment`, `population`, or `inflation`.
 
 ## How it works
 
-Claude Code's MCP client does not hand a mod the result's `_meta`. A mod's `tool.call` hook received `content` only (observed on 2.1.322), and the mod API types `$.mcp.call` as returning `content`, `isError`, and `structuredContent`. A mod also cannot send `interceptor/invoke`. So the mod's `tool.call` hook answers each `statistics` call by running `src/audit-cli.ts`, which calls the tool as a client that declares citations, runs the interceptors, and prints a report. The portal server in `.mcp.json` only lists the tool for the model. Each call starts three Node processes.
+Claude Code does not hand a mod the result's `_meta`. A probe server on 2.1.322 returned a marker in each part of a result, with these outcomes:
+
+| Part of the result | Model | Mod (`tool.call` hook and `$.mcp.call`) | Session record (`tool_use_result` in `stream-json` output) |
+| --- | --- | --- | --- |
+| `content` text | yes | yes | yes |
+| A content block's own `_meta` | no | yes | yes |
+| Result `_meta` | no | no | yes |
+| Top-level `citations` | no | no | no |
+
+When the result also had `structuredContent`, the model and the mod received its JSON as text in place of the content blocks. A mod also cannot send `interceptor/invoke`. So the mod's `tool.call` hook answers each `statistics` call by running `src/audit-cli.ts`, which calls the tool as a client that declares citations, runs the interceptors, and prints a report. The portal server in `.mcp.json` only lists the tool for the model. Each call starts three Node processes.
 
 `types/index.d.ts` copies the report types from `src/host.ts`, since an installed mod has no access to `src/`. Keep the two in step.
