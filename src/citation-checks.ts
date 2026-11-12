@@ -15,6 +15,7 @@ interface Parsed {
     links: ParsedLinks;
     /** Entries of `citations` that are objects, with their array index. */
     citations: Array<{ index: number; citation: Citation }>;
+    /** Shape errors. Only the binding check reports them. */
     messages: ValidationMessage[];
 }
 
@@ -128,6 +129,7 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
         messages.push({ path: 'citations', message: 'result carries no citations, so its claims cannot be traced to a source', severity: config.uncitedSeverity });
     }
     const ids = new Map<string, number>();
+    let markerKeyed = 0;
     let nameKeyed = 0;
     let blockLevel = 0;
 
@@ -156,7 +158,10 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
         ids.set(label, index);
 
         const definition = links.definitions.get(label);
-        if (!links.markers.has(label)) {
+        if (links.markers.has(label)) {
+            markerKeyed++;
+        } else {
+            blockLevel++;
             messages.push({
                 path: `${path}.id`,
                 message: `id "${citation.id}" has no [${citation.id}] marker in the content, so it reads as a block-level citation`,
@@ -187,7 +192,7 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
         messages.push({ path: 'content', message: `marker [${marker}] has no entry in \`citations\`${literal}`, severity: 'warn' });
     }
 
-    return { messages, info: { citations: citations.length, markerKeyed: ids.size, nameKeyed, blockLevel } };
+    return { messages, info: { citations: citations.length, markerKeyed, nameKeyed, blockLevel } };
 }
 
 export interface UrlPolicyConfig {
@@ -231,7 +236,8 @@ function isPrivateHost(hostname: string): boolean {
  * allow-list.
  */
 export function checkUrlPolicy(result: CitedToolResult, config: UrlPolicyConfig = {}): CheckOutput {
-    const { links, citations, messages } = parse(result);
+    const { links, citations } = parse(result);
+    const messages: ValidationMessage[] = [];
     const allowed = (config.allowedSchemes ?? ['https']).map(scheme => scheme.toLowerCase());
     let checked = 0;
 
@@ -291,7 +297,8 @@ export type SourceLookup = (url: string) => Promise<string | undefined>;
 
 /** Checks that each citation's quoted `text` appears in the cited source. */
 export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup, config: QuoteCheckConfig = {}): Promise<CheckOutput> {
-    const { links, citations, messages } = parse(result);
+    const { links, citations } = parse(result);
+    const messages: ValidationMessage[] = [];
     const counts = { verified: 0, notFound: 0, unverified: 0 };
     /** What the check found for each quoting citation, by index. */
     const quotes: Record<number, QuoteOutcome> = {};
@@ -334,7 +341,8 @@ const REQUIRES_ATTRIBUTION = /creativecommons\.org\/licenses\/by|opendatacommons
  * and names someone to credit when those terms require attribution.
  */
 export function checkLicense(result: CitedToolResult, config: LicenseConfig = {}): CheckOutput {
-    const { citations, messages } = parse(result);
+    const { citations } = parse(result);
+    const messages: ValidationMessage[] = [];
     const counts = { licensed: 0, unlicensed: 0, uncredited: 0 };
 
     for (const { index, citation } of citations) {
@@ -383,7 +391,7 @@ export interface StripOutput {
 export async function stripBadCitations(result: CitedToolResult, lookup: SourceLookup, config: UrlPolicyConfig = {}): Promise<StripOutput> {
     const outputs = [checkBinding(result), checkUrlPolicy(result, config), await checkQuotes(result, lookup)];
     const errors = outputs.flatMap(output => output.messages).filter(message => message.severity === 'error');
-    if (errors.length === 0) return { result, stripped: [] };
+    if (errors.length === 0 || result.citations === undefined) return { result, stripped: [] };
 
     // `citations` itself is malformed: drop the field.
     if (!Array.isArray(result.citations)) {
@@ -397,14 +405,17 @@ export async function stripBadCitations(result: CitedToolResult, lookup: SourceL
         if (index === undefined) continue;
         reasons.set(Number(index), [...(reasons.get(Number(index)) ?? []), error.message]);
     }
+    // Errors about links in the text that no citation is bound to strip nothing.
+    if (reasons.size === 0) return { result, stripped: [] };
 
     const entries = result.citations as Array<Citation | null>;
     const kept = entries.filter((_, index) => !reasons.has(index));
     const stripped = [...reasons]
         .sort(([a], [b]) => a - b)
         .map(([index, why]) => {
-            const { id, name } = entries[index] ?? {};
-            return { index, ...(id && { id }), ...(name && { name }), reasons: why };
+            // A stripped entry may be malformed: keep only string keys.
+            const { id, name } = (entries[index] ?? {}) as Record<string, unknown>;
+            return { index, ...(typeof id === 'string' && id && { id }), ...(typeof name === 'string' && name && { name }), reasons: why };
         });
 
     // Leave a marker alone when a kept citation still uses it (a stripped duplicate id).

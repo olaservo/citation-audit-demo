@@ -10,6 +10,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { listCitations, type QuoteOutcome } from './citation-checks.ts';
 import {
     discover,
+    messagesOf,
     mutationError,
     newContext,
     runMutators,
@@ -28,10 +29,10 @@ import {
     type Severity
 } from './types.ts';
 
-export type Mode = 'audit' | 'strip' | 'block';
+export type AuditMode = 'audit' | 'strip' | 'block';
 
 /** Invoker overrides for each mode. `audit` keeps the server-declared defaults. */
-export const MODES: Record<Mode, Record<string, InterceptorOverrides>> = {
+export const MODES: Record<AuditMode, Record<string, InterceptorOverrides>> = {
     audit: {},
     strip: { 'citation-filter': { mode: 'active', timeoutMs: 2000 } },
     block: {
@@ -144,7 +145,7 @@ export interface CitationRow {
 }
 
 export interface AuditReport {
-    mode: Mode;
+    mode: AuditMode;
     outcome: 'delivered' | 'blocked';
     /** The content blocks to deliver. Absent when blocked. */
     content?: CitedToolResult['content'];
@@ -163,12 +164,8 @@ function licenseLabel(license: string): string {
 const QUOTE_LABEL: Record<QuoteOutcome, NonNullable<CitationRow['quote']>> = { verified: 'verified', notFound: 'not found', unverified: 'unverified' };
 
 /** A flat report of one audit, for a client that renders the citations. */
-export function report(audit: Audit, mode: Mode): AuditReport {
-    const findings: Finding[] = audit.validation.outcomes.flatMap(outcome =>
-        outcome.result
-            ? (outcome.result.messages ?? []).map(message => ({ interceptor: outcome.interceptor, ...message }))
-            : [{ interceptor: outcome.interceptor, severity: 'error' as const, message: outcome.failure ?? 'invocation failed' }]
-    );
+export function report(audit: Audit, mode: AuditMode): AuditReport {
+    const findings: Finding[] = audit.validation.outcomes.flatMap(messagesOf);
     const applied = audit.mutation?.outcomes.filter(outcome => outcome.applied) ?? [];
     const stripped = new Set(applied.flatMap(outcome => ((outcome.result?.info?.stripped ?? []) as Array<{ index: number }>).map(entry => entry.index)));
     // Absent when the quote check did not run or failed.

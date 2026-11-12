@@ -5,9 +5,9 @@
 //   echo '{"name":"statistics","arguments":{"topic":"unemployment"}}' | tsx src/audit-cli.ts strip
 import { text } from 'node:stream/consumers';
 
-import { callAndAudit, closeHost, MODES, report, startHost, type Mode } from './host.ts';
+import { callAndAudit, closeHost, MODES, report, startHost, type AuditMode } from './host.ts';
 
-const mode = (process.argv[2] ?? 'audit') as Mode;
+const mode = (process.argv[2] ?? 'audit') as AuditMode;
 if (!(mode in MODES)) {
     console.error(`unknown mode "${mode}": expected ${Object.keys(MODES).join(', ')}`);
     process.exit(2);

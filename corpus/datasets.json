@@ -10,7 +10,8 @@
       "name": "central-statistics-office",
       "title": "Central Statistics Office"
     },
-    "metadata_modified": "2026-11-11T01:16:29.839981"
+    "metadata_modified": "2026-11-11T01:16:29.839981",
+    "updated": "2026-08-24"
   },
   {
     "name": "mum01-seasonally-adjusted-monthly-unemployment",
@@ -23,7 +24,8 @@
       "name": "central-statistics-office",
       "title": "Central Statistics Office"
     },
-    "metadata_modified": "2026-11-11T01:24:24.151108"
+    "metadata_modified": "2026-11-11T01:24:24.151108",
+    "updated": "2026-11-04"
   },
   {
     "name": "qlf51-quarterly-unemployment-and-long-term-unemployment-rate",
@@ -36,6 +38,7 @@
       "name": "central-statistics-office",
       "title": "Central Statistics Office"
     },
-    "metadata_modified": "2026-11-11T01:17:22.264780"
+    "metadata_modified": "2026-11-11T01:17:22.264780",
+    "updated": "2026-08-20"
   }
 ]

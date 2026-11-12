@@ -42,7 +42,8 @@ interface Dataset {
     title: string;
     license_url?: string;
     organization?: { title: string } | null;
-    metadata_modified?: string;
+    /** The date the data was last updated. `metadata_modified` changes on every nightly harvest. */
+    updated?: string;
 }
 
 const DATASETS = ['datasets.json', 'fictional-datasets.json'].flatMap(
@@ -50,14 +51,15 @@ const DATASETS = ['datasets.json', 'fictional-datasets.json'].flatMap(
 );
 
 /** The citation for a catalogue dataset: its title, license, and publishing organization. */
-function cite(slug: string, extra: Partial<Citation> = {}): Citation {
+function cite(slug: string, { id, ...extra }: Partial<Citation> = {}): Citation {
     const dataset = DATASETS.find(entry => entry.name === slug)!;
     return {
-        ...(extra.id && { id: extra.id }),
+        // `id` first, so it leads the citation's JSON.
+        ...(id && { id }),
         name: dataset.title,
         ...(dataset.license_url && { license: dataset.license_url }),
         ...(dataset.organization && { publisher: { type: 'Organization', name: dataset.organization.title } }),
-        ...(dataset.metadata_modified && { datePublished: dataset.metadata_modified.slice(0, 10) }),
+        ...(dataset.updated && { datePublished: dataset.updated }),
         ...extra
     };
 }
@@ -113,7 +115,8 @@ const ANSWERS: Record<string, Answer> = {
             cite(UNEMPLOYMENT, { id: 'c1', text: row.unemployment }),
             // The invented dataset gives 12.4 percent.
             cite(YOUTH, { id: 'c2', text: 'Youth unemployment in Northmark fell to 9.8 percent in October 2026.' }),
-            // [c3] has no entry here and no link definition above.
+            // No entry for [c3], which also has no link definition.
+
             // Not in the catalogue. Private destination and a file: thumbnail.
             {
                 id: 'c4',

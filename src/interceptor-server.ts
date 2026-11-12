@@ -142,16 +142,6 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
 
 const SEVERITY_RANK: Record<Severity, number> = { info: 0, warn: 1, error: 2 };
 
-function timeout(name: string, phase: string, timeoutMs: number): Promise<never> {
-    return new Promise((_, reject) => {
-        const timer = setTimeout(
-            () => reject(new ProtocolError(-32000, 'Interceptor execution timeout', { interceptor: name, timeoutMs, phase })),
-            timeoutMs
-        );
-        timer.unref();
-    });
-}
-
 function buildServer(): McpServer {
     const mcp = new McpServer({ name: 'citation-interceptors', version: '0.1.0' });
     mcp.server.registerCapabilities({ extensions: { [INTERCEPTORS_EXTENSION]: { supportedEvents: ['tools/call'] } } });
@@ -180,8 +170,12 @@ function buildServer(): McpServer {
                 });
             }
 
+            // The error shape of the SEP's "Configuration invalid" example.
             const invalid = (what: string, error: z.ZodError) =>
-                new ProtocolError(-32602, `Invalid ${what} for ${params.name}`, { interceptor: params.name, reason: z.prettifyError(error) });
+                new ProtocolError(-32603, 'Interceptor execution failed', {
+                    interceptor: params.name,
+                    reason: `Invalid ${what}: ${z.prettifyError(error)}`
+                });
             const parsedConfig = entry.config.safeParse(params.config ?? {});
             if (!parsedConfig.success) throw invalid('config', parsedConfig.error);
             const parsedPayload = PayloadSchema.safeParse(params.payload);
@@ -193,13 +187,23 @@ function buildServer(): McpServer {
             const { timeoutMs } = params;
             // The race answers on time. It does not cancel the check, which the SEP requires.
             const deadline = async <T>(run: () => T | Promise<T>): Promise<T> => {
+                let timer: NodeJS.Timeout | undefined;
                 try {
                     const running = Promise.resolve().then(run);
-                    return await (timeoutMs === undefined ? running : Promise.race([running, timeout(params.name, params.phase, timeoutMs)]));
+                    if (timeoutMs === undefined) return await running;
+                    const expired = new Promise<never>((_, reject) => {
+                        timer = setTimeout(
+                            () => reject(new ProtocolError(-32000, 'Interceptor execution timeout', { interceptor: params.name, timeoutMs, phase: params.phase })),
+                            timeoutMs
+                        );
+                    });
+                    return await Promise.race([running, expired]);
                 } catch (error) {
                     if (error instanceof ProtocolError) throw error;
                     const reason = error instanceof Error ? error.message : String(error);
                     throw new ProtocolError(-32603, 'Interceptor execution failed', { interceptor: params.name, reason });
+                } finally {
+                    clearTimeout(timer);
                 }
             };
             const common = { interceptor: params.name, phase: params.phase };

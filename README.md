@@ -34,7 +34,7 @@ This is independent work and not officially associated with OKFN.
 
 The citations point at real datasets on [data.gov.ie](https://data.gov.ie), Ireland's open data portal, which runs CKAN. The datasets are published by the Central Statistics Office under CC BY 4.0. Everything was retrieved on 2026-11-11.
 
-- `corpus/datasets.json` holds three catalogue records as CKAN's `package_show` returned them, cut down to `name`, `title`, `notes`, the license fields, `organization`, and `metadata_modified`. Each citation's name, license, publisher, and date come from its record.
+- `corpus/datasets.json` holds three catalogue records as CKAN's `package_show` returned them, cut down to `name`, `title`, `notes`, the license fields, `organization`, `metadata_modified`, and `updated`. Each citation's name, license, and publisher come from its record. Its `datePublished` is the record's `updated` date for the data. The record's `metadata_modified` changes on every nightly harvest, so it is not used.
 - `corpus/PEA01.txt` and `MUM01.txt` are extracts of the datasets' CSV files: the header and a few rows each. A citation's quoted `text` is one CSV row, and `citation-quote-check` looks for it in the extract.
 - The quarterly unemployment dataset (QLF51) has no extract, so the quote on its citation cannot be checked and is reported as unverified.
 - The demo makes no network requests when it runs. The extracts will go stale as the Central Statistics Office revises its figures.
@@ -202,7 +202,7 @@ The demo ran into these where attribution, SEP-3094, and SEP-2624 meet but don't
 - `citation-url-policy` checks the host as written. It does not resolve DNS names, so a public name that resolves to a private address passes.
 - SEP-2624 requires a timed-out interceptor to be cancelled. The Interceptor Server returns `-32000` on time and lets the check finish.
 - The result schemas require `interceptor`, `type`, and `phase`, as the SEP-2624 interfaces do. The SEP's example responses omit them, and a server answering like the examples is treated as a failed invocation.
-- SEP-2624 names `lastValidPayload` in its mutation error example but does not say what it holds. The demo returns the original payload, so no mutation applies when one halts.
+- SEP-2624 says a halted mutation returns the "last valid state" in `lastValidPayload`, and that mutations are atomic. The demo returns the original payload, so no mutation applies when one halts.
 - A citation's `@context` is ignored. Every citation is read in the default MCP format.
 - With one mutator, priority ordering and passing each mutation's output to the next are implemented in `src/invoker.ts` but not exercised. `failOpen`, timeouts, and hook narrowing are also implemented and not exercised.
 - The filter reruns three of the checks itself. SEP-2624 gives a mutator no access to validator results, and interceptor state propagation is listed as future work.

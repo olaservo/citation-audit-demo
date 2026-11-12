@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import { checkBinding, checkLicense, checkQuotes, checkUrlPolicy, listCitations, stripBadCitations } from '../src/citation-checks.ts';
 import { report } from '../src/host.ts';
+import { messagesOf } from '../src/invoker.ts';
 import { parseLinks, unlink } from '../src/markdown-links.ts';
 
 const URL_A = 'https://example.com/a';
@@ -49,10 +50,18 @@ test('binding reports empty, duplicate, unbound, and dangling entries, and only 
     );
 });
 
-test('binding rejects a non-array `citations` and a field of the wrong type', () => {
+test('binding counts an id with no marker as block-level', () => {
+    const { info } = checkBinding({ content: text(`One [c1].\n\n[c1]: ${URL_A}`), citations: [{ id: 'c1' }, { id: 'c2', url: URL_A }] });
+    assert.deepEqual(info, { citations: 2, markerKeyed: 1, nameKeyed: 0, blockLevel: 1 });
+});
+
+test('only the binding check rejects a non-array `citations` and a field of the wrong type', async () => {
     assert.deepEqual(severities(checkBinding({ content: text('x'), citations: { id: 'c1' } }).messages), ['error']);
-    const { messages } = checkBinding({ content: text('x'), citations: [{ id: 5, name: 'Five' }] });
-    assert.deepEqual(messages, [{ path: 'citations[0]', message: '`id` must be a string', severity: 'error' }]);
+    const result = { content: text('x'), citations: [{ id: 5, name: 'Five' }] };
+    assert.deepEqual(checkBinding(result).messages, [{ path: 'citations[0]', message: '`id` must be a string', severity: 'error' }]);
+    const others = [checkUrlPolicy(result), await checkQuotes(result, async () => undefined), checkLicense(result)];
+    assert.deepEqual(others.flatMap(output => output.messages), []);
+    assert.deepEqual((await stripBadCitations(result, async () => undefined)).stripped, [{ index: 0, name: 'Five', reasons: ['`id` must be a string'] }]);
 });
 
 test('url policy allows https and rejects other schemes and private hosts', () => {
@@ -223,4 +232,20 @@ test('filter keeps the marker a kept citation shares and returns sound results u
     const untouched = await stripBadCitations(sound, lookup);
     assert.equal(untouched.result, sound);
     assert.deepEqual(untouched.stripped, []);
+});
+
+test('filter strips nothing for a bad link that no citation is bound to', async () => {
+    const content = text('See [the portal](http://10.0.0.1/x).');
+    for (const result of [{ content }, { content, citations: [] }]) {
+        assert.equal(checkUrlPolicy(result).messages.length, 2);
+        const stripped = await stripBadCitations(result, async () => undefined);
+        assert.equal(stripped.result, result);
+        assert.deepEqual(stripped.stripped, []);
+    }
+});
+
+test('a failed invocation is a warning when failOpen is true and an error otherwise', () => {
+    const outcome = { interceptor: 'x', mode: 'audit' as const, modeSource: 'default' as const, failOpenSource: 'default' as const, blocks: false, failure: 'crashed' };
+    assert.equal(messagesOf({ ...outcome, failOpen: true })[0]!.severity, 'warn');
+    assert.equal(messagesOf({ ...outcome, failOpen: false })[0]!.severity, 'error');
 });

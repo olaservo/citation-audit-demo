@@ -5,10 +5,10 @@
 import { CLIENT_CAPABILITIES_META_KEY, McpServer, ProtocolError, type CallToolResult, type ClientCapabilities } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
-import { callAndAudit, MODES, report, startHost, type Host, type Mode } from './host.ts';
+import { callAndAudit, MODES, report, startHost, type AuditMode, type Host } from './host.ts';
 import { CITATIONS_EXTENSION } from './types.ts';
 
-const mode = (process.env.GATEWAY_MODE ?? 'strip') as Mode;
+const mode = (process.env.GATEWAY_MODE ?? 'strip') as AuditMode;
 if (!(mode in MODES)) throw new Error(`unknown GATEWAY_MODE "${mode}": expected ${Object.keys(MODES).join(', ')}`);
 
 // The gateway reads citations and draws nothing, so it declares the

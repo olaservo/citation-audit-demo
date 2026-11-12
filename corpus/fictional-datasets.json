@@ -7,7 +7,8 @@
     "license_title": "Creative Commons Attribution 4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
     "organization": { "name": "northmark-statistics-office", "title": "Northmark Statistics Office (fictional)" },
-    "metadata_modified": "2026-11-11T00:00:00"
+    "metadata_modified": "2026-11-11T00:00:00",
+    "updated": "2026-11-11"
   },
   {
     "name": "northmark-weekly-earnings",
@@ -17,6 +18,7 @@
     "license_title": "Creative Commons Attribution Share-Alike 4.0",
     "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
     "organization": null,
-    "metadata_modified": "2026-11-11T00:00:00"
+    "metadata_modified": "2026-11-11T00:00:00",
+    "updated": "2026-11-11"
   }
 ]

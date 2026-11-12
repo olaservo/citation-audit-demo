@@ -13,6 +13,7 @@ import {
     type Mode,
     type MutationResult,
     type Phase,
+    type ValidationMessage,
     type ValidationResult
 } from './types.ts';
 
@@ -185,6 +186,15 @@ export async function runMutators(
     return { outcomes, payload: current };
 }
 
+/**
+ * An outcome's messages, or one message for a failed invocation. A failure is
+ * a warning when failOpen lets the message proceed, and an error otherwise.
+ */
+export function messagesOf(outcome: ValidationOutcome): Array<ValidationMessage & { interceptor: string }> {
+    if (outcome.result) return (outcome.result.messages ?? []).map(message => ({ interceptor: outcome.interceptor, ...message }));
+    return [{ interceptor: outcome.interceptor, severity: outcome.failOpen ? 'warn' : 'error', message: outcome.failure ?? 'invocation failed' }];
+}
+
 /** The JSON-RPC error an invoker returns when validation blocks (SEP-2624 "Error Handling"). */
 export function validationError(summary: ValidationSummary) {
     return {
@@ -193,13 +203,8 @@ export function validationError(summary: ValidationSummary) {
         data: {
             validationErrors: summary.outcomes
                 .filter(outcome => outcome.blocks)
-                .flatMap(outcome =>
-                    outcome.result
-                        ? (outcome.result.messages ?? [])
-                              .filter(message => message.severity === 'error')
-                              .map(message => ({ interceptor: outcome.interceptor, ...message }))
-                        : [{ interceptor: outcome.interceptor, severity: 'error' as const, message: outcome.failure ?? 'invocation failed' }]
-                )
+                .flatMap(messagesOf)
+                .filter(message => message.severity === 'error')
         }
     };
 }
