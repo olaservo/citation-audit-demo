@@ -73,20 +73,21 @@ const REFUSAL =
     `This portal answers only clients that declare they render citations (${CITATIONS_EXTENSION} with \`render\`).`;
 
 const ANSWERS: Record<string, Answer> = {
-    // Uses all three link forms from the SEP: a bare marker, a marker whose
-    // citation carries a text-fragment URL, and an inline link keyed by `name`.
+    // Uses the SEP's three link forms: a bare marker, a marker with link text,
+    // and an inline link keyed by `name`.
     population: {
         text: [
             `Ireland's population figures come from [PEA01 - Population Estimates (Persons in April), Central Statistics Office](${PORTAL}/${POPULATION}).`,
             'The population was estimated at 5,525,600 in April 2026 [c1],',
-            'up from 5,458,600 a year earlier [c2].',
+            'up from [5,458,600 a year earlier][c2].',
             '',
             `[c1]: ${PORTAL}/${POPULATION}`,
             `[c2]: ${PORTAL}/${POPULATION}`
         ].join('\n'),
         citations: [
             cite(POPULATION, { id: 'c1', text: row.population2026 }),
-            // The fragment selects the dataset's title on its portal page. The page does not show the rows.
+            // `url` adds a text fragment to the link definition. It selects the dataset's
+            // title on its portal page, which does not show the rows.
             cite(POPULATION, {
                 id: 'c2',
                 url: `${PORTAL}/${POPULATION}#:~:text=Population%20Estimates%20(Persons%20in%20April)`,
@@ -100,7 +101,7 @@ const ANSWERS: Record<string, Answer> = {
         text: [
             'The seasonally adjusted unemployment rate in Ireland was 4.8 percent in October 2026 [c1].',
             'The long-term unemployment rate was 1.3 percent in the second quarter of 2026.',
-            'In the fictional region of Northmark, youth unemployment fell to 9.8 percent in the same month [c2].',
+            'In the fictional region of Northmark, youth unemployment fell to 9.8 percent in October 2026 [c2].',
             'The Northmark rate is forecast to fall below 4.5 percent in 2027 [c3].',
             'Northmark regional figures are on the staging portal [c4].',
             'Average weekly earnings in Northmark rose 3.1 percent over the year [c6].',

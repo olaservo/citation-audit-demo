@@ -39,7 +39,7 @@ The citations point at real datasets on [data.gov.ie](https://data.gov.ie), Irel
 - The quarterly unemployment dataset (QLF51) has no extract, so the quote on its citation cannot be checked and is reported as unverified.
 - The demo makes no network requests when it runs. The extracts will go stale as the Central Statistics Office revises its figures.
 
-The `unemployment` answer is partly wrong on purpose so the auditor has something to find. Its two sound citations are real. Every flawed citation is invented: it is about the fictional region of Northmark and points at `data.example.org`, a staging address, or nothing. The invented catalogue records are in `corpus/fictional-datasets.json` and their source texts in `corpus/northmark-*.txt`. No real dataset or publisher is cited for a wrong figure.
+The `unemployment` answer is partly wrong on purpose so the auditor has something to find. Its two sound citations are real. Every flawed citation is invented, and points at a Northmark dataset on `data.example.org`, a staging address, or nothing. The invented catalogue records are in `corpus/fictional-datasets.json` and their source texts in `corpus/northmark-*.txt`. No real dataset or publisher is cited for a wrong figure.
 
 The `inflation` figure is real (CSO table CPM18) and is returned with no citation. The Central Statistics Office and data.gov.ie have no part in this demo.
 
@@ -63,7 +63,7 @@ Every citation ends the audit in one of three states.
 | --- | --- |
 | `passed` | Every check passed. The citation is delivered. |
 | `flagged` | A check reported an error, and the citation was delivered anyway. This happens in `audit` mode, which only reports, and for a license error in `strip` mode. |
-| `stripped` | A check reported an error, and the citation was removed. The claim it backed stays in the text with no citation. Only `strip` mode removes citations. |
+| `stripped` | A check reported an error, and the citation was removed. The claim it backed stays in the text with no citation. This happens in `strip` mode, and in `block` mode for a citation that fails only the binding check. |
 
 A passed citation that quotes its source also shows what the quote check found:
 
@@ -118,7 +118,7 @@ The checks and the strip are plain functions in `src/citation-checks.ts`.
 
 The filter removes the citation and leaves the claim in the text uncited. Link text is kept as plain text. Findings at `warn` or `info` do not strip, so a marker with no entry (`[c3]` in the demo) stays.
 
-The filter does not act on a license error. Stripping makes the most sense for a reader checking an answer. In that case, a citation that fails a check is removed and the claim remains uncited. A publisher whose license requires credit is worse off when the citation is removed, so the response to a license error is to block the result.
+The filter does not act on a license error, because removing the citation would also remove the credit the license requires. In `strip` mode such a citation is delivered flagged. In `block` mode the result is refused.
 
 `citation-url-policy` and `citation-license` are deployment policies. SEP-3094 "Dereferencing citation URIs" restricts what a client fetches automatically and allows MCP-resolved schemes; it does not make a non-https citation invalid. The SEP does not mention licenses. `license` is a schema.org CreativeWork property outside the subset the SEP lists.
 
@@ -127,7 +127,7 @@ The filter does not act on a license error. Stripping makes the most sense for a
 The host follows the receiving order from SEP-2624: validate in parallel, then mutate in sequence if validation did not block.
 
 1. `statistics(population)` returns sound citations in all three link forms. All validators pass and the filter returns `modified: false`.
-2. `statistics(unemployment)` returns flawed citations: a figure the dataset does not contain, a marker with no entry, a dataset credited with no marker, an entry with no `id`, `name`, or `url`, a staging portal on a private address, a `file:` thumbnail, and a share-alike dataset with nobody named to credit. With the server-declared audit mode the findings are logged, the filter computes a shadow mutation that is not applied, and the result is delivered unchanged.
+2. `statistics(unemployment)` returns two sound citations, one of them with no marker in the text, and four flawed ones: a figure the dataset does not contain, an entry with no `id`, `name`, or `url`, a staging portal on a private address with a `file:` thumbnail, and a share-alike dataset with nobody named to credit. The text also has a marker with no entry. With the server-declared audit mode the findings are logged, the filter computes a shadow mutation that is not applied, and the result is delivered unchanged.
 3. The same call with an invoker override that promotes `citation-filter` to `active`. Three of six citations are stripped and the result is delivered with the remaining three. One of the three still has the license error.
 4. The same call with `citation-url-policy`, `citation-quote-check`, and `citation-license` also promoted to `active`. The result is blocked with `-32602 Interceptor validation failed` and the filter does not run.
 5. `statistics(inflation)` returns a figure with no citations. The host configures `citation-binding` with `uncitedSeverity: "warn"`, so the result is delivered with a warning.
@@ -188,7 +188,7 @@ The demo ran into these where attribution, SEP-3094, and SEP-2624 meet but don't
 - SEP-3094 defines no error or convention for a server declining a client that will not render. Is a tool error the right shape, and how does the user learn why?
 - A client that declared `render` should render citations. Does that hold for a block-level citation, or a claim-level one whose marker the model dropped from its answer?
 - `license` is outside the SEP's CreativeWork subset. Share-alike and modification-notice terms don't appear to have an official field. Also, how should a server indicate that a citation must not be removed, for attribution or correction?
-- An auditor that strips a failing citation also removes the credit. The demo blocks on a license error. Is that the auditor's decision or the server's?
+- An auditor that strips a failing citation also removes the credit. The demo never strips for a license error, and blocks on one in `block` mode. Is that the auditor's decision or the server's?
 - The audit here runs on the host, where the citations are drawn. The gateway runs the same interceptors and cannot see what the client draws. What should a gateway declare to the server: its own support, or its client's?
 
 ## Where the demo fills a gap or departs from the referenced SEPs
@@ -205,7 +205,8 @@ The demo ran into these where attribution, SEP-3094, and SEP-2624 meet but don't
 - SEP-2624 says a halted mutation returns the "last valid state" in `lastValidPayload`, and that mutations are atomic. The demo returns the original payload, so no mutation applies when one halts.
 - A citation's `@context` is ignored. Every citation is read in the default MCP format.
 - With one mutator, priority ordering and passing each mutation's output to the next are implemented in `src/invoker.ts` but not exercised. `failOpen`, timeouts, and hook narrowing are also implemented and not exercised.
-- The filter reruns three of the checks itself. SEP-2624 gives a mutator no access to validator results, and interceptor state propagation is listed as future work.
+- The filter reruns three of the checks itself. SEP-2624 gives a mutator no access to validator results, and interceptor state propagation is listed as future work. The filter runs the binding and quote checks with their default severities, so a quote check configured with `unverifiedSeverity: "error"` flags an unverified quote and the filter does not strip it.
+- A citation's `datePublished` is the date CKAN gives for the data's last update. schema.org defines `datePublished` as the date of first publication, and the SEP's subset has no `dateModified`.
 - `src/markdown-links.ts` is a small scanner, not a CommonMark parser. It does not skip code spans.
 
 ## Acknowledgements

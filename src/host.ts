@@ -173,11 +173,12 @@ export function report(audit: Audit, mode: AuditMode): AuditReport {
         | Record<string, QuoteOutcome>
         | undefined;
 
-    const citations = listCitations(audit.result).map(({ index, key, name, url, license, credit }): CitationRow => {
+    const citations = listCitations(audit.result).map(({ index, key, name, url, quotes: hasQuote, license, credit }): CitationRow => {
         const reasons = findings
             .filter(finding => finding.path?.startsWith(`citations[${index}]`) && finding.severity === 'error')
             .map(finding => finding.message);
-        const quote = quotes?.[index];
+        // A quote the check did not look at is unverified.
+        const quote = quotes?.[index] ?? (hasQuote ? 'unverified' : undefined);
         return {
             key,
             ...(name && { name }),

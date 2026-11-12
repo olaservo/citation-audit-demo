@@ -147,6 +147,54 @@ test('report labels an unverifiable quote unverified at any severity', async () 
     assert.equal(row!.quote, 'unverified');
 });
 
+test('report labels a quote unverified when the quote check failed', () => {
+    const result = { content: text('One.'), citations: [{ name: 'A', url: URL_A, text: 'quoted' }, { name: 'B', url: URL_A }] };
+    const outcome = {
+        interceptor: 'citation-quote-check',
+        mode: 'audit' as const,
+        modeSource: 'default' as const,
+        failOpen: true,
+        failOpenSource: 'default' as const,
+        blocks: false,
+        failure: 'crashed'
+    };
+    const audit = { result, validation: { outcomes: [outcome], blocked: false }, delivered: result };
+    const rows = report(audit, 'audit').citations;
+    assert.deepEqual(rows.map(row => [row.status, row.quote]), [['passed', 'unverified'], ['passed', undefined]]);
+});
+
+test('report lists a malformed citation the filter stripped', async () => {
+    const result = { content: text('One.'), citations: [{ id: 5, name: 'Five' }, null] };
+    const binding = checkBinding(result);
+    const { result: clean, stripped } = await stripBadCitations(result, async () => undefined);
+    const outcome = (interceptor: string) => ({
+        interceptor,
+        mode: 'active' as const,
+        modeSource: 'override' as const,
+        failOpen: false,
+        failOpenSource: 'default' as const
+    });
+    const audit = {
+        result,
+        validation: {
+            outcomes: [{ ...outcome('citation-binding'), blocks: false, result: { interceptor: 'citation-binding', type: 'validation' as const, phase: 'response' as const, valid: false, ...binding } }],
+            blocked: false
+        },
+        mutation: {
+            outcomes: [{ ...outcome('citation-filter'), priority: -10000, applied: true, result: { interceptor: 'citation-filter', type: 'mutation' as const, phase: 'response' as const, modified: true, payload: clean, info: { stripped } } }],
+            payload: clean
+        },
+        delivered: clean
+    };
+    assert.deepEqual(
+        report(audit, 'strip').citations.map(row => [row.key, row.status]),
+        [
+            ['Five', 'stripped'],
+            ['#1', 'stripped']
+        ]
+    );
+});
+
 test('binding check reports a result with no citations when configured to', () => {
     for (const result of [{ content: text('A figure.') }, { content: text('A figure.'), citations: [] }]) {
         assert.deepEqual(checkBinding(result).messages, []);

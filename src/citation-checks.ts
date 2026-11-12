@@ -90,15 +90,26 @@ export interface CitationInfo {
     key: string;
     name?: string;
     url?: string;
+    /** Whether the citation quotes its source in `text`. */
+    quotes: boolean;
     license?: string;
     /** The name of the `publisher`, else of the `author`. */
     credit?: string;
 }
 
-/** One entry per citation object, with the destination a client would open. */
+/** One entry per element of `citations`, with the destination a client would open. */
 export function listCitations(result: CitedToolResult): CitationInfo[] {
     const { links, citations } = parse(result);
-    return citations.map(({ index, citation }) => {
+    if (!Array.isArray(result.citations)) return [];
+    const parsed = new Map(citations.map(({ index, citation }) => [index, citation]));
+    return result.citations.map((entry, index) => {
+        const citation = parsed.get(index);
+        if (!citation) {
+            // A malformed entry: keep only string keys, as stripBadCitations does.
+            const { id, name } = (entry && typeof entry === 'object' ? entry : {}) as Record<string, unknown>;
+            const key = (typeof id === 'string' && id) || (typeof name === 'string' && name) || `#${index}`;
+            return { index, key, ...(typeof name === 'string' && name && { name }), quotes: false };
+        }
         const url = destination(citation, links);
         const credit = partyName(citation.publisher) ?? partyName(citation.author);
         return {
@@ -106,6 +117,7 @@ export function listCitations(result: CitedToolResult): CitationInfo[] {
             key: citation.id ?? citation.name ?? `#${index}`,
             ...(citation.name && { name: citation.name }),
             ...(url && { url }),
+            quotes: Boolean(citation.text),
             ...(citation.license && { license: citation.license }),
             ...(credit && { credit })
         };
