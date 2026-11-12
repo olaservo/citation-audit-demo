@@ -136,7 +136,7 @@ export interface CitationRow {
     url?: string;
     /** `flagged`: a check reported an error and the citation was not removed. */
     status: 'passed' | 'stripped' | 'flagged';
-    quote?: 'verified' | 'not found' | 'unverified';
+    quote?: QuoteOutcome;
     /** A short name for the citation's `license`, such as "CC BY 4.0". */
     license?: string;
     /** The publisher or author to credit. */
@@ -161,8 +161,6 @@ function licenseLabel(license: string): string {
     return cc ? `CC ${cc[1]!.toUpperCase()} ${cc[2]}` : license;
 }
 
-const QUOTE_LABEL: Record<QuoteOutcome, NonNullable<CitationRow['quote']>> = { verified: 'verified', notFound: 'not found', unverified: 'unverified' };
-
 /** A flat report of one audit, for a client that renders the citations. */
 export function report(audit: Audit, mode: AuditMode): AuditReport {
     const findings: Finding[] = audit.validation.outcomes.flatMap(messagesOf);
@@ -184,7 +182,7 @@ export function report(audit: Audit, mode: AuditMode): AuditReport {
             ...(name && { name }),
             ...(url && { url }),
             status: stripped.has(index) ? 'stripped' : reasons.length > 0 ? 'flagged' : 'passed',
-            ...(quote && { quote: QUOTE_LABEL[quote] }),
+            ...(quote && { quote }),
             ...(license && { license: licenseLabel(license) }),
             ...(credit && { credit }),
             reasons

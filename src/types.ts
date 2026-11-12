@@ -139,6 +139,7 @@ export interface Citation {
     /** schema.org CreativeWork `license`: a URL or a name. Not in the SEP's subset. */
     license?: string;
     display?: 'embedded' | 'external' | 'auto';
+    'mcp:annotations'?: { audience?: Array<'user' | 'assistant'>; priority?: number; lastModified?: string };
 }
 
 // A tools/call result carrying SEP-3094 citations. This is the payload the

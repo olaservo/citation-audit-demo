@@ -59,7 +59,8 @@ function cite(slug: string, { id, ...extra }: Partial<Citation> = {}): Citation 
         name: dataset.title,
         ...(dataset.license_url && { license: dataset.license_url }),
         ...(dataset.organization && { publisher: { type: 'Organization', name: dataset.organization.title } }),
-        ...(dataset.updated && { datePublished: dataset.updated }),
+        // The date the data was last updated. SEP-3094 maps `lastModified` to dcterms:modified.
+        ...(dataset.updated && { 'mcp:annotations': { lastModified: dataset.updated } }),
         ...extra
     };
 }
@@ -73,8 +74,8 @@ const REFUSAL =
     `This portal answers only clients that declare they render citations (${CITATIONS_EXTENSION} with \`render\`).`;
 
 const ANSWERS: Record<string, Answer> = {
-    // Uses the SEP's three link forms: a bare marker, a marker with link text,
-    // and an inline link keyed by `name`.
+    // Uses the SEP's three link forms (a bare marker, a marker with link text,
+    // and an inline link keyed by `name`) and a block-level citation.
     population: {
         text: [
             `Ireland's population figures come from [PEA01 - Population Estimates (Persons in April), Central Statistics Office](${PORTAL}/${POPULATION}).`,
@@ -85,6 +86,8 @@ const ANSWERS: Record<string, Answer> = {
             `[c2]: ${PORTAL}/${POPULATION}`
         ].join('\n'),
         citations: [
+            // Block-level: no marker, so it credits the dataset for the whole answer.
+            cite(POPULATION, { url: `${PORTAL}/${POPULATION}` }),
             cite(POPULATION, { id: 'c1', text: row.population2026 }),
             // `url` adds a text fragment to the link definition. It selects the dataset's
             // title on its portal page, which does not show the rows.
@@ -100,7 +103,7 @@ const ANSWERS: Record<string, Answer> = {
     unemployment: {
         text: [
             'The seasonally adjusted unemployment rate in Ireland was 4.8 percent in October 2026 [c1].',
-            'The long-term unemployment rate was 1.3 percent in the second quarter of 2026.',
+            'The long-term unemployment rate was 1.3 percent in the second quarter of 2026 [c5].',
             'In the fictional region of Northmark, youth unemployment fell to 9.8 percent in October 2026 [c2].',
             'The Northmark rate is forecast to fall below 4.5 percent in 2027 [c3].',
             'Northmark regional figures are on the staging portal [c4].',
@@ -109,6 +112,7 @@ const ANSWERS: Record<string, Answer> = {
             `[c1]: ${PORTAL}/${UNEMPLOYMENT}`,
             `[c2]: ${FICTIONAL}/${YOUTH}`,
             '[c4]: http://10.20.0.15/dataset/regional-unemployment',
+            `[c5]: ${PORTAL}/${QUARTERLY}`,
             `[c6]: ${FICTIONAL}/${EARNINGS}`
         ].join('\n'),
         citations: [
@@ -126,8 +130,8 @@ const ANSWERS: Record<string, Answer> = {
                 license: 'https://creativecommons.org/licenses/by/4.0/',
                 publisher: { type: 'Organization', name: 'Portal staging' }
             },
-            // No [c5] marker in the text: the dataset is credited for the whole answer.
-            cite(QUARTERLY, { id: 'c5', url: `${PORTAL}/${QUARTERLY}`, text: row.longTerm }),
+            // Sound, but the corpus has no extract to check the quote against.
+            cite(QUARTERLY, { id: 'c5', text: row.longTerm }),
             // The sentence is in the invented dataset. Its record has a share-alike
             // license and no organization, so nobody is named to credit.
             cite(EARNINGS, { id: 'c6', text: 'Average weekly earnings in Northmark rose 3.1 percent over the year to the second quarter of 2026.' }),

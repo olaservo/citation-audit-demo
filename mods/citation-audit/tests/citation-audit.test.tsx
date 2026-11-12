@@ -113,7 +113,7 @@ test('the band above the prompt shows the last audit until it is hidden', async 
   const mount = () => $.ui.mount({ plugin: 'citation-audit', component: 'AbovePrompt', surface: 'terminal', props })
 
   let ui = await mount()
-  expect(await ui.find({ type: 'Text', text: /Citation audit/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /statistics\(unemployment\)/ })).toBeUndefined()
   await ui.unmount()
 
   await $.tool.call({ tool: 'mcp__portal__statistics', topic: 'unemployment', tool_use_id: 'call-1' })
@@ -129,7 +129,7 @@ test('the band above the prompt shows the last audit until it is hidden', async 
   await ui.unmount()
 
   ui = await mount()
-  expect(await ui.find({ type: 'Text', text: /Citation audit/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /statistics\(unemployment\)/ })).toBeUndefined()
   await ui.unmount()
 })
 

@@ -101,7 +101,7 @@ test('url policy checks the markdown link beside a citation url, and links no ci
     };
     assert.deepEqual(
         checkUrlPolicy(result).messages.map(message => message.path),
-        ['citations[0].url', 'citations[0].url', 'content', 'content', 'content']
+        ['citations[0]', 'citations[0]', 'content', 'content', 'content']
     );
 });
 
@@ -116,7 +116,7 @@ test('quote check verifies, rejects, and reports unverifiable quotes', async () 
         ]
     };
     const { messages, info } = await checkQuotes(result, lookup);
-    assert.deepEqual(info, { verified: 1, notFound: 1, unverified: 1, quotes: { 0: 'verified', 1: 'notFound', 2: 'unverified' } });
+    assert.deepEqual(info, { verified: 1, notFound: 1, unverified: 1, quotes: { 0: 'verified', 1: 'not found', 2: 'unverified' } });
     assert.deepEqual(
         messages.map(message => [message.path, message.severity]),
         [

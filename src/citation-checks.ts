@@ -1,6 +1,6 @@
-// The four citation checks. Each takes a tools/call result and returns
-// SEP-2624 validation messages. They are pure so the tests can call them
-// without an MCP connection.
+// The four citation checks and the filter. Each check takes a tools/call
+// result and returns SEP-2624 validation messages. They are pure so the tests
+// can call them without an MCP connection.
 import { isIP } from 'node:net';
 
 import { normalizeLabel, parseLinks, unlink, type ParsedLinks } from './markdown-links.ts';
@@ -47,6 +47,12 @@ function parse(result: CitedToolResult): Parsed {
         parsed.citations.push({ index, citation: entry as Citation });
     });
     return parsed;
+}
+
+/** The string `id` and `name` of an entry that may be malformed. */
+function keysOf(entry: unknown): { id?: string; name?: string } {
+    const { id, name } = (entry && typeof entry === 'object' ? entry : {}) as Record<string, unknown>;
+    return { ...(typeof id === 'string' && id && { id }), ...(typeof name === 'string' && name && { name }) };
 }
 
 /** The destination of the markdown link a citation is bound to, if any. */
@@ -105,10 +111,8 @@ export function listCitations(result: CitedToolResult): CitationInfo[] {
     return result.citations.map((entry, index) => {
         const citation = parsed.get(index);
         if (!citation) {
-            // A malformed entry: keep only string keys, as stripBadCitations does.
-            const { id, name } = (entry && typeof entry === 'object' ? entry : {}) as Record<string, unknown>;
-            const key = (typeof id === 'string' && id) || (typeof name === 'string' && name) || `#${index}`;
-            return { index, key, ...(typeof name === 'string' && name && { name }), quotes: false };
+            const { id, name } = keysOf(entry);
+            return { index, key: id ?? name ?? `#${index}`, ...(name && { name }), quotes: false };
         }
         const url = destination(citation, links);
         const credit = partyName(citation.publisher) ?? partyName(citation.author);
@@ -274,9 +278,10 @@ export function checkUrlPolicy(result: CitedToolResult, config: UrlPolicyConfig 
 
     for (const { index, citation } of citations) {
         // A client that ignores `citations` still follows the markdown link.
+        // Its findings go on the citation, which has no field holding the URL.
         const linked = markdownDestination(citation, links);
         check(`citations[${index}].url`, citation.url);
-        if (linked !== citation.url) check(`citations[${index}].url`, linked);
+        if (linked !== citation.url) check(`citations[${index}]`, linked);
         check(`citations[${index}].thumbnailUrl`, citation.thumbnailUrl);
     }
 
@@ -302,7 +307,7 @@ function normalizeQuote(text: string): string {
         .toLowerCase();
 }
 
-export type QuoteOutcome = 'verified' | 'notFound' | 'unverified';
+export type QuoteOutcome = 'verified' | 'not found' | 'unverified';
 
 /** Reads the text of a cited source by URL without its fragment, or undefined if unknown. */
 export type SourceLookup = (url: string) => Promise<string | undefined>;
@@ -333,7 +338,7 @@ export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup,
             quotes[index] = 'verified';
         } else {
             counts.notFound++;
-            quotes[index] = 'notFound';
+            quotes[index] = 'not found';
             messages.push({ path, message: `quoted text does not appear in ${withoutFragment(url!)}: "${citation.text}"`, severity: 'error' });
         }
     }
@@ -424,11 +429,7 @@ export async function stripBadCitations(result: CitedToolResult, lookup: SourceL
     const kept = entries.filter((_, index) => !reasons.has(index));
     const stripped = [...reasons]
         .sort(([a], [b]) => a - b)
-        .map(([index, why]) => {
-            // A stripped entry may be malformed: keep only string keys.
-            const { id, name } = (entries[index] ?? {}) as Record<string, unknown>;
-            return { index, ...(typeof id === 'string' && id && { id }), ...(typeof name === 'string' && name && { name }), reasons: why };
-        });
+        .map(([index, why]) => ({ index, ...keysOf(entries[index]), reasons: why }));
 
     // Leave a marker alone when a kept citation still uses it (a stripped duplicate id).
     const keptKeys = boundKeys(kept);
