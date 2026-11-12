@@ -89,7 +89,6 @@ export interface CitationInfo {
     key: string;
     name?: string;
     url?: string;
-    quote?: string;
     license?: string;
     /** The name of the `publisher`, else of the `author`. */
     credit?: string;
@@ -106,7 +105,6 @@ export function listCitations(result: CitedToolResult): CitationInfo[] {
             key: citation.id ?? citation.name ?? `#${index}`,
             ...(citation.name && { name: citation.name }),
             ...(url && { url }),
-            ...(citation.text && { quote: citation.text }),
             ...(citation.license && { license: citation.license }),
             ...(credit && { credit })
         };
@@ -286,6 +284,8 @@ function normalizeQuote(text: string): string {
         .toLowerCase();
 }
 
+export type QuoteOutcome = 'verified' | 'notFound' | 'unverified';
+
 /** Reads the text of a cited source by URL without its fragment, or undefined if unknown. */
 export type SourceLookup = (url: string) => Promise<string | undefined>;
 
@@ -293,6 +293,8 @@ export type SourceLookup = (url: string) => Promise<string | undefined>;
 export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup, config: QuoteCheckConfig = {}): Promise<CheckOutput> {
     const { links, citations, messages } = parse(result);
     const counts = { verified: 0, notFound: 0, unverified: 0 };
+    /** What the check found for each quoting citation, by index. */
+    const quotes: Record<number, QuoteOutcome> = {};
 
     for (const { index, citation } of citations) {
         if (!citation.text) continue;
@@ -301,6 +303,7 @@ export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup,
         const source = url ? await lookup(withoutFragment(url)) : undefined;
         if (source === undefined) {
             counts.unverified++;
+            quotes[index] = 'unverified';
             messages.push({
                 path,
                 message: `quote not verified: ${url ? `no snapshot of ${withoutFragment(url)}` : 'citation has no destination'}`,
@@ -308,12 +311,14 @@ export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup,
             });
         } else if (normalizeQuote(source).includes(normalizeQuote(citation.text))) {
             counts.verified++;
+            quotes[index] = 'verified';
         } else {
             counts.notFound++;
+            quotes[index] = 'notFound';
             messages.push({ path, message: `quoted text does not appear in ${withoutFragment(url!)}: "${citation.text}"`, severity: 'error' });
         }
     }
-    return { messages, info: counts };
+    return { messages, info: { ...counts, quotes } };
 }
 
 export interface LicenseConfig {

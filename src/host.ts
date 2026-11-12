@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
-import { listCitations } from './citation-checks.ts';
+import { listCitations, type QuoteOutcome } from './citation-checks.ts';
 import {
     discover,
     mutationError,
@@ -160,6 +160,8 @@ function licenseLabel(license: string): string {
     return cc ? `CC ${cc[1]!.toUpperCase()} ${cc[2]}` : license;
 }
 
+const QUOTE_LABEL: Record<QuoteOutcome, NonNullable<CitationRow['quote']>> = { verified: 'verified', notFound: 'not found', unverified: 'unverified' };
+
 /** A flat report of one audit, for a client that renders the citations. */
 export function report(audit: Audit, mode: Mode): AuditReport {
     const findings: Finding[] = audit.validation.outcomes.flatMap(outcome =>
@@ -169,18 +171,22 @@ export function report(audit: Audit, mode: Mode): AuditReport {
     );
     const applied = audit.mutation?.outcomes.filter(outcome => outcome.applied) ?? [];
     const stripped = new Set(applied.flatMap(outcome => ((outcome.result?.info?.stripped ?? []) as Array<{ index: number }>).map(entry => entry.index)));
-    const quoteChecked = audit.validation.outcomes.some(outcome => outcome.interceptor === 'citation-quote-check' && outcome.result);
+    // Absent when the quote check did not run or failed.
+    const quotes = audit.validation.outcomes.find(outcome => outcome.interceptor === 'citation-quote-check')?.result?.info?.quotes as
+        | Record<string, QuoteOutcome>
+        | undefined;
 
-    const citations = listCitations(audit.result).map(({ index, key, name, url, quote, license, credit }): CitationRow => {
-        const own = findings.filter(finding => finding.path?.startsWith(`citations[${index}]`));
-        const reasons = own.filter(finding => finding.severity === 'error').map(finding => finding.message);
-        const quoteFinding = own.find(finding => finding.path === `citations[${index}].text`);
+    const citations = listCitations(audit.result).map(({ index, key, name, url, license, credit }): CitationRow => {
+        const reasons = findings
+            .filter(finding => finding.path?.startsWith(`citations[${index}]`) && finding.severity === 'error')
+            .map(finding => finding.message);
+        const quote = quotes?.[index];
         return {
             key,
             ...(name && { name }),
             ...(url && { url }),
             status: stripped.has(index) ? 'stripped' : reasons.length > 0 ? 'flagged' : 'passed',
-            ...(quote && quoteChecked && { quote: !quoteFinding ? 'verified' : quoteFinding.severity === 'error' ? 'not found' : 'unverified' }),
+            ...(quote && { quote: QUOTE_LABEL[quote] }),
             ...(license && { license: licenseLabel(license) }),
             ...(credit && { credit }),
             reasons

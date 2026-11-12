@@ -26,7 +26,10 @@ function printValidation(summary: ValidationSummary): void {
         }
         const result = outcome.result!;
         const verdict = result.valid ? (result.severity ? `valid, ${result.severity}` : 'valid') : 'invalid';
-        const info = Object.entries(result.info ?? {}).map(([key, value]) => `${key}=${value}`);
+        // Counts only. Per-citation detail is in the messages below.
+        const info = Object.entries(result.info ?? {})
+            .filter(([, value]) => typeof value !== 'object')
+            .map(([key, value]) => `${key}=${value}`);
         console.log(row(outcome.interceptor, verdict, policyOf(outcome), info.join(' ')));
         for (const message of result.messages ?? []) {
             console.log(`      ${message.severity.padEnd(5)} ${message.path ?? ''}  ${message.message}`);

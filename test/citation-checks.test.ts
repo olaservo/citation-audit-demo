@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { checkBinding, checkLicense, checkQuotes, checkUrlPolicy, listCitations, stripBadCitations } from '../src/citation-checks.ts';
+import { report } from '../src/host.ts';
 import { parseLinks, unlink } from '../src/markdown-links.ts';
 
 const URL_A = 'https://example.com/a';
@@ -106,7 +107,7 @@ test('quote check verifies, rejects, and reports unverifiable quotes', async () 
         ]
     };
     const { messages, info } = await checkQuotes(result, lookup);
-    assert.deepEqual(info, { verified: 1, notFound: 1, unverified: 1 });
+    assert.deepEqual(info, { verified: 1, notFound: 1, unverified: 1, quotes: { 0: 'verified', 1: 'notFound', 2: 'unverified' } });
     assert.deepEqual(
         messages.map(message => [message.path, message.severity]),
         [
@@ -116,6 +117,25 @@ test('quote check verifies, rejects, and reports unverifiable quotes', async () 
     );
     const strict = await checkQuotes(result, lookup, { unverifiedSeverity: 'warn' });
     assert.equal(strict.messages[1]!.severity, 'warn');
+});
+
+test('report labels an unverifiable quote unverified at any severity', async () => {
+    const lookup = async () => undefined;
+    const result = { content: text('One.'), citations: [{ name: 'A', url: URL_A, text: 'quoted' }] };
+    const check = await checkQuotes(result, lookup, { unverifiedSeverity: 'error' });
+    const outcome = {
+        interceptor: 'citation-quote-check',
+        mode: 'audit' as const,
+        modeSource: 'default' as const,
+        failOpen: true,
+        failOpenSource: 'default' as const,
+        blocks: false,
+        result: { interceptor: 'citation-quote-check', type: 'validation' as const, phase: 'response' as const, valid: false, ...check }
+    };
+    const audit = { result, validation: { outcomes: [outcome], blocked: false }, delivered: result };
+    const [row] = report(audit, 'audit').citations;
+    assert.equal(row!.status, 'flagged');
+    assert.equal(row!.quote, 'unverified');
 });
 
 test('binding check reports a result with no citations when configured to', () => {
