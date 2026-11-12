@@ -5,9 +5,14 @@ import { checkBinding, checkLicense, checkQuotes, checkUrlPolicy, listCitations,
 import { report } from '../src/host.ts';
 import { messagesOf } from '../src/invoker.ts';
 import { parseLinks, unlink } from '../src/markdown-links.ts';
+import { CITATIONS_META_KEY, CITATIONS_PATH, citationsOf } from '../src/types.ts';
 
 const URL_A = 'https://example.com/a';
 const text = (value: string) => [{ type: 'text', text: value }];
+/** A result's `_meta` holding these citations. */
+const meta = <T>(citations: T) => ({ [CITATIONS_META_KEY]: citations });
+/** The path of a citation, or of a field in it. */
+const at = (index: number, field = '') => `${CITATIONS_PATH}[${index}]${field}`;
 const severities = (messages: Array<{ severity: string }>) => messages.map(message => message.severity);
 
 test('parseLinks finds definitions, markers, and inline links', () => {
@@ -20,7 +25,7 @@ test('parseLinks finds definitions, markers, and inline links', () => {
 test('binding accepts the three minimalist forms from SEP-3094', () => {
     const result = {
         content: text(`One [c1]. Two [title][c2]. Three [Named](${URL_A}).\n\n[c1]: ${URL_A}\n[c2]: ${URL_A}`),
-        citations: [{ id: 'c1' }, { id: 'c2' }, { name: 'Named' }]
+        _meta: meta([{ id: 'c1' }, { id: 'c2' }, { name: 'Named' }])
     };
     const { messages, info } = checkBinding(result);
     assert.deepEqual(messages, []);
@@ -28,7 +33,7 @@ test('binding accepts the three minimalist forms from SEP-3094', () => {
 });
 
 test('binding treats an unmatched name as a block-level citation', () => {
-    const { messages, info } = checkBinding({ content: text('No markers.'), citations: [{ name: 'Whole answer', url: URL_A }] });
+    const { messages, info } = checkBinding({ content: text('No markers.'), _meta: meta([{ name: 'Whole answer', url: URL_A }]) });
     assert.deepEqual(messages, []);
     assert.equal(info.blockLevel, 1);
 });
@@ -36,29 +41,29 @@ test('binding treats an unmatched name as a block-level citation', () => {
 test('binding reports empty, duplicate, unbound, and dangling entries, and only an empty entry is an error', () => {
     const { messages } = checkBinding({
         content: text(`One [c1]. Two [c2]. Three [c3].\n\n[c1]: ${URL_A}`),
-        citations: [{ id: 'c1' }, { id: 'c1' }, { id: 'c2' }, { id: 'c9', url: URL_A }, { description: 'nothing else' }]
+        _meta: meta([{ id: 'c1' }, { id: 'c1' }, { id: 'c2' }, { id: 'c9', url: URL_A }, { description: 'nothing else' }])
     });
     assert.deepEqual(
         messages.map(message => [message.path, message.severity]),
         [
-            ['citations[1].id', 'warn'], // duplicate
-            ['citations[2]', 'warn'], // c2 has no destination
-            ['citations[3].id', 'warn'], // c9 has no marker
-            ['citations[4]', 'error'], // none of id, name, url
+            [at(1, '.id'), 'warn'], // duplicate
+            [at(2), 'warn'], // c2 has no destination
+            [at(3, '.id'), 'warn'], // c9 has no marker
+            [at(4), 'error'], // none of id, name, url
             ['content', 'warn'] // [c3] has no citation
         ]
     );
 });
 
 test('binding counts an id with no marker as block-level', () => {
-    const { info } = checkBinding({ content: text(`One [c1].\n\n[c1]: ${URL_A}`), citations: [{ id: 'c1' }, { id: 'c2', url: URL_A }] });
+    const { info } = checkBinding({ content: text(`One [c1].\n\n[c1]: ${URL_A}`), _meta: meta([{ id: 'c1' }, { id: 'c2', url: URL_A }]) });
     assert.deepEqual(info, { citations: 2, markerKeyed: 1, nameKeyed: 0, blockLevel: 1 });
 });
 
-test('only the binding check rejects a non-array `citations` and a field of the wrong type', async () => {
-    assert.deepEqual(severities(checkBinding({ content: text('x'), citations: { id: 'c1' } }).messages), ['error']);
-    const result = { content: text('x'), citations: [{ id: 5, name: 'Five' }] };
-    assert.deepEqual(checkBinding(result).messages, [{ path: 'citations[0]', message: '`id` must be a string', severity: 'error' }]);
+test('only the binding check rejects a non-array citations value and a field of the wrong type', async () => {
+    assert.deepEqual(severities(checkBinding({ content: text('x'), _meta: meta({ id: 'c1' }) }).messages), ['error']);
+    const result = { content: text('x'), _meta: meta([{ id: 5, name: 'Five' }]) };
+    assert.deepEqual(checkBinding(result).messages, [{ path: at(0), message: '`id` must be a string', severity: 'error' }]);
     const others = [checkUrlPolicy(result), await checkQuotes(result, async () => undefined), checkLicense(result)];
     assert.deepEqual(others.flatMap(output => output.messages), []);
     assert.deepEqual((await stripBadCitations(result, async () => undefined)).stripped, [{ index: 0, name: 'Five', reasons: ['`id` must be a string'] }]);
@@ -81,15 +86,15 @@ test('url policy allows https and rejects other schemes and private hosts', () =
         'https://100.64.0.1/x',
         'not a url'
     ];
-    const { messages } = checkUrlPolicy({ citations: urls.map(url => ({ url })) });
+    const { messages } = checkUrlPolicy({ _meta: meta(urls.map(url => ({ url }))) });
     assert.deepEqual(
         messages.map(message => message.path),
-        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(index => `citations[${index}].url`)
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(index => at(index, '.url'))
     );
 });
 
 test('url policy checks the markdown destination of a minimalist citation and honours allowedSchemes', () => {
-    const result = { content: text('Claim [c1].\n\n[c1]: http://example.com/a'), citations: [{ id: 'c1' }] };
+    const result = { content: text('Claim [c1].\n\n[c1]: http://example.com/a'), _meta: meta([{ id: 'c1' }]) };
     assert.equal(checkUrlPolicy(result).messages.length, 1);
     assert.equal(checkUrlPolicy(result, { allowedSchemes: ['https', 'http'] }).messages.length, 0);
 });
@@ -97,11 +102,11 @@ test('url policy checks the markdown destination of a minimalist citation and ho
 test('url policy checks the markdown link beside a citation url, and links no citation is bound to', () => {
     const result = {
         content: text(`One [c1]. See [here](http://localhost/x).\n\n[c1]: http://169.254.169.254/x\n[other]: file:///etc/passwd`),
-        citations: [{ id: 'c1', url: URL_A }]
+        _meta: meta([{ id: 'c1', url: URL_A }])
     };
     assert.deepEqual(
         checkUrlPolicy(result).messages.map(message => message.path),
-        ['citations[0]', 'citations[0]', 'content', 'content', 'content']
+        [at(0), at(0), 'content', 'content', 'content']
     );
 });
 
@@ -109,19 +114,19 @@ test('quote check verifies, rejects, and reports unverifiable quotes', async () 
     const lookup = async (url: string) => (url === URL_A ? 'The  quick brown fox\njumps over the lazy dog.' : undefined);
     const result = {
         content: text(`One [c1].\n\n[c1]: ${URL_A}#section`),
-        citations: [
+        _meta: meta([
             { id: 'c1', text: 'quick brown fox jumps' },
             { name: 'B', url: `${URL_A}#:~:text=x`, text: 'The fox was slow.' },
             { name: 'C', url: 'https://example.com/unknown', text: 'anything' }
-        ]
+        ])
     };
     const { messages, info } = await checkQuotes(result, lookup);
     assert.deepEqual(info, { verified: 1, notFound: 1, unverified: 1, quotes: { 0: 'verified', 1: 'not found', 2: 'unverified' } });
     assert.deepEqual(
         messages.map(message => [message.path, message.severity]),
         [
-            ['citations[1].text', 'error'],
-            ['citations[2].text', 'info']
+            [at(1, '.text'), 'error'],
+            [at(2, '.text'), 'info']
         ]
     );
     const strict = await checkQuotes(result, lookup, { unverifiedSeverity: 'warn' });
@@ -130,7 +135,7 @@ test('quote check verifies, rejects, and reports unverifiable quotes', async () 
 
 test('report labels an unverifiable quote unverified at any severity', async () => {
     const lookup = async () => undefined;
-    const result = { content: text('One.'), citations: [{ name: 'A', url: URL_A, text: 'quoted' }] };
+    const result = { content: text('One.'), _meta: meta([{ name: 'A', url: URL_A, text: 'quoted' }]) };
     const check = await checkQuotes(result, lookup, { unverifiedSeverity: 'error' });
     const outcome = {
         interceptor: 'citation-quote-check',
@@ -148,7 +153,7 @@ test('report labels an unverifiable quote unverified at any severity', async () 
 });
 
 test('report labels a quote unverified when the quote check failed', () => {
-    const result = { content: text('One.'), citations: [{ name: 'A', url: URL_A, text: 'quoted' }, { name: 'B', url: URL_A }] };
+    const result = { content: text('One.'), _meta: meta([{ name: 'A', url: URL_A, text: 'quoted' }, { name: 'B', url: URL_A }]) };
     const outcome = {
         interceptor: 'citation-quote-check',
         mode: 'audit' as const,
@@ -164,7 +169,7 @@ test('report labels a quote unverified when the quote check failed', () => {
 });
 
 test('report lists a malformed citation the filter stripped', async () => {
-    const result = { content: text('One.'), citations: [{ id: 5, name: 'Five' }, null] };
+    const result = { content: text('One.'), _meta: meta([{ id: 5, name: 'Five' }, null]) };
     const binding = checkBinding(result);
     const { result: clean, stripped } = await stripBadCitations(result, async () => undefined);
     const outcome = (interceptor: string) => ({
@@ -196,36 +201,36 @@ test('report lists a malformed citation the filter stripped', async () => {
 });
 
 test('binding check reports a result with no citations when configured to', () => {
-    for (const result of [{ content: text('A figure.') }, { content: text('A figure.'), citations: [] }]) {
+    for (const result of [{ content: text('A figure.') }, { content: text('A figure.'), _meta: meta([]) }]) {
         assert.deepEqual(checkBinding(result).messages, []);
         assert.deepEqual(
             checkBinding(result, { uncitedSeverity: 'warn' }).messages.map(message => [message.path, message.severity]),
-            [['citations', 'warn']]
+            [[CITATIONS_PATH, 'warn']]
         );
     }
-    assert.deepEqual(checkBinding({ content: text('x'), citations: [{ name: 'A', url: URL_A }] }, { uncitedSeverity: 'warn' }).messages, []);
+    assert.deepEqual(checkBinding({ content: text('x'), _meta: meta([{ name: 'A', url: URL_A }]) }, { uncitedSeverity: 'warn' }).messages, []);
 });
 
 test('license check wants a license, and someone to credit when the license requires it', () => {
     const CC_BY = 'https://creativecommons.org/licenses/by/4.0/';
     const result = {
         content: text('No markers.'),
-        citations: [
+        _meta: meta([
             { name: 'A', license: CC_BY, publisher: { type: 'Organization', name: 'Office' } },
             { name: 'B', license: 'ODbL-1.0', author: [{ name: 'Someone' }] },
             { name: 'C', license: 'https://creativecommons.org/publicdomain/zero/1.0/' },
             { name: 'D', license: CC_BY, publisher: { name: ' ' } },
             { name: 'E' },
             { description: 'left to the binding check' }
-        ]
+        ])
     };
     const { messages, info } = checkLicense(result);
     assert.deepEqual(info, { licensed: 3, unlicensed: 1, uncredited: 1 });
     assert.deepEqual(
         messages.map(message => [message.path, message.severity]),
         [
-            ['citations[3].license', 'error'],
-            ['citations[4].license', 'error']
+            [at(3, '.license'), 'error'],
+            [at(4, '.license'), 'error']
         ]
     );
     assert.equal(checkLicense(result, { missingSeverity: 'warn' }).messages[1]!.severity, 'warn');
@@ -236,7 +241,7 @@ test('license check wants a license, and someone to credit when the license requ
 });
 
 test('filter leaves a citation whose only error is its license', async () => {
-    const result = { content: text(`One [c1].\n\n[c1]: ${URL_A}`), citations: [{ id: 'c1' }] };
+    const result = { content: text(`One [c1].\n\n[c1]: ${URL_A}`), _meta: meta([{ id: 'c1' }]) };
     assert.equal(checkLicense(result).messages[0]!.severity, 'error');
     assert.deepEqual((await stripBadCitations(result, async () => undefined)).stripped, []);
 });
@@ -251,18 +256,19 @@ test('filter removes citations with errors and leaves a result that passes every
     const lookup = async (url: string) => (url === URL_A ? 'The quick brown fox.' : undefined);
     const result = {
         content: text(`Good [c1]. Fabricated [c2]. Unsafe [c3]. Unbound.\n\n[c1]: ${URL_A}\n[c2]: ${URL_A}\n[c3]: https://localhost/x`),
-        citations: [
+        _meta: meta([
             { id: 'c1', text: 'quick brown fox' },
             { id: 'c2', text: 'The fox was slow.' },
             { id: 'c3' },
             { id: 'c9', url: URL_A }, // warning only: kept
             { description: 'no key' }
-        ]
+        ])
     };
     const { result: clean, stripped } = await stripBadCitations(result, lookup);
 
     assert.deepEqual(stripped.map(entry => entry.index), [1, 2, 4]);
-    assert.deepEqual(clean.citations, [result.citations[0], result.citations[3]]);
+    const cited = result._meta[CITATIONS_META_KEY];
+    assert.deepEqual(citationsOf(clean), [cited[0], cited[3]]);
     assert.equal(clean.content![0]!.text, `Good [c1]. Fabricated. Unsafe. Unbound.\n\n[c1]: ${URL_A}`);
 
     const remaining = [checkBinding(clean), checkUrlPolicy(clean), await checkQuotes(clean, lookup)].flatMap(output => output.messages);
@@ -271,12 +277,12 @@ test('filter removes citations with errors and leaves a result that passes every
 
 test('filter keeps the marker a kept citation shares and returns sound results untouched', async () => {
     const lookup = async (url: string) => (url === URL_A ? 'The quick brown fox.' : undefined);
-    const duplicate = { content: text(`One [c1].\n\n[c1]: ${URL_A}`), citations: [{ id: 'c1' }, { id: 'c1', text: 'The fox was slow.' }] };
+    const duplicate = { content: text(`One [c1].\n\n[c1]: ${URL_A}`), _meta: meta([{ id: 'c1' }, { id: 'c1', text: 'The fox was slow.' }]) };
     const { result: clean } = await stripBadCitations(duplicate, lookup);
-    assert.deepEqual(clean.citations, [{ id: 'c1' }]);
+    assert.deepEqual(citationsOf(clean), [{ id: 'c1' }]);
     assert.equal(clean.content![0]!.text, duplicate.content[0]!.text);
 
-    const sound = { content: text(`One [c1].\n\n[c1]: ${URL_A}`), citations: [{ id: 'c1' }] };
+    const sound = { content: text(`One [c1].\n\n[c1]: ${URL_A}`), _meta: meta([{ id: 'c1' }]) };
     const untouched = await stripBadCitations(sound, lookup);
     assert.equal(untouched.result, sound);
     assert.deepEqual(untouched.stripped, []);
@@ -284,7 +290,7 @@ test('filter keeps the marker a kept citation shares and returns sound results u
 
 test('filter strips nothing for a bad link that no citation is bound to', async () => {
     const content = text('See [the portal](http://10.0.0.1/x).');
-    for (const result of [{ content }, { content, citations: [] }]) {
+    for (const result of [{ content }, { content, _meta: meta([]) }]) {
         assert.equal(checkUrlPolicy(result).messages.length, 2);
         const stripped = await stripBadCitations(result, async () => undefined);
         assert.equal(stripped.result, result);
@@ -296,4 +302,14 @@ test('a failed invocation is a warning when failOpen is true and an error otherw
     const outcome = { interceptor: 'x', mode: 'audit' as const, modeSource: 'default' as const, failOpenSource: 'default' as const, blocks: false, failure: 'crashed' };
     assert.equal(messagesOf({ ...outcome, failOpen: true })[0]!.severity, 'warn');
     assert.equal(messagesOf({ ...outcome, failOpen: false })[0]!.severity, 'error');
+});
+
+test('filter keeps the other keys of `_meta`', async () => {
+    const serverInfo = { 'io.modelcontextprotocol/serverInfo': { name: 'portal-server', version: '0.1.0' } };
+    const result = { content: text('One.'), _meta: { ...serverInfo, ...meta([{ description: 'no key' }]) } };
+    const { result: clean } = await stripBadCitations(result, async () => undefined);
+    assert.deepEqual(clean._meta, { ...serverInfo, ...meta([]) });
+
+    const malformed = { content: text('One.'), _meta: { ...serverInfo, ...meta({ id: 'c1' }) } };
+    assert.deepEqual((await stripBadCitations(malformed, async () => undefined)).result._meta, serverInfo);
 });

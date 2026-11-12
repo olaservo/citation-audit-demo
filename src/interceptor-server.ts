@@ -50,14 +50,17 @@ const BindingConfig = z.strictObject({ uncitedSeverity: z.enum(['info', 'warn', 
 const SchemesConfig = z.strictObject({ allowedSchemes: z.array(z.string()).optional() });
 const QuoteConfig = z.strictObject({ unverifiedSeverity: z.enum(['info', 'warn', 'error']).optional() });
 const LicenseConfig = z.strictObject({ missingSeverity: z.enum(['info', 'warn', 'error']).optional() });
-const PayloadSchema = z.looseObject({ content: z.array(z.looseObject({ type: z.string() })).optional() });
+const PayloadSchema = z.looseObject({
+    content: z.array(z.looseObject({ type: z.string() })).optional(),
+    _meta: z.record(z.string(), z.unknown()).optional()
+});
 
 const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; check?: Check; mutate?: Mutate }> = [
     {
         descriptor: {
             name: 'citation-binding',
             version: '0.1.0',
-            description: 'Checks that citation markers in tool result text and entries in `citations` line up (SEP-3094)',
+            description: 'Checks that citation markers in tool result text and the citations in its `_meta` line up (SEP-3094)',
             type: 'validation',
             hooks: HOOKS,
             mode: 'audit',

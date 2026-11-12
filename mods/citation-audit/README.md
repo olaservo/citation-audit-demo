@@ -32,6 +32,6 @@ Ask for statistics on `unemployment`, `population`, or `inflation`.
 
 ## How it works
 
-Claude Code's MCP client drops the top-level `citations` field: a mod's `tool.call` hook and `$.mcp.call` both receive `content` only (observed on 2.1.322). A mod also cannot send `interceptor/invoke`. So the mod's `tool.call` hook answers each `statistics` call by running `src/audit-cli.ts`, which calls the tool as a client that declares citations, runs the interceptors, and prints a report. The portal server in `.mcp.json` only lists the tool for the model. Each call starts three Node processes.
+Claude Code's MCP client does not hand a mod the result's `_meta`. A mod's `tool.call` hook received `content` only (observed on 2.1.322), and the mod API types `$.mcp.call` as returning `content`, `isError`, and `structuredContent`. A mod also cannot send `interceptor/invoke`. So the mod's `tool.call` hook answers each `statistics` call by running `src/audit-cli.ts`, which calls the tool as a client that declares citations, runs the interceptors, and prints a report. The portal server in `.mcp.json` only lists the tool for the model. Each call starts three Node processes.
 
 `types/index.d.ts` copies the report types from `src/host.ts`, since an installed mod has no access to `src/`. Keep the two in step.

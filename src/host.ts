@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
-import { listCitations, type QuoteOutcome } from './citation-checks.ts';
+import { citationIndex, listCitations, type QuoteOutcome } from './citation-checks.ts';
 import {
     discover,
     messagesOf,
@@ -70,7 +70,7 @@ export async function connect(script: string, capabilities: Record<string, unkno
     return client;
 }
 
-/** `citations`: the SEP-3094 capability to declare. The default says this client renders citations. */
+/** `citations`: the citations capability to declare. The default says this client renders citations. */
 export async function startHost(citations: Record<string, unknown> = { render: {} }): Promise<Host> {
     const portal = await connect('./portal-server.ts', { extensions: { [CITATIONS_EXTENSION]: citations } });
     const interceptorServer = await connect('./interceptor-server.ts');
@@ -173,7 +173,7 @@ export function report(audit: Audit, mode: AuditMode): AuditReport {
 
     const citations = listCitations(audit.result).map(({ index, key, name, url, quotes: hasQuote, license, credit }): CitationRow => {
         const reasons = findings
-            .filter(finding => finding.path?.startsWith(`citations[${index}]`) && finding.severity === 'error')
+            .filter(finding => citationIndex(finding.path) === index && finding.severity === 'error')
             .map(finding => finding.message);
         // A quote the check did not look at is unverified.
         const quote = quotes?.[index] ?? (hasQuote ? 'unverified' : undefined);

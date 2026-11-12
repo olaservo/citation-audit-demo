@@ -139,12 +139,35 @@ export interface Citation {
     /** schema.org CreativeWork `license`: a URL or a name. Not in the SEP's subset. */
     license?: string;
     display?: 'embedded' | 'external' | 'auto';
-    'mcp:annotations'?: { audience?: Array<'user' | 'assistant'>; priority?: number; lastModified?: string };
+    /** SEP-3094 also puts `audience` here. The demo leaves it out. */
+    'mcp:annotations'?: { priority?: number; lastModified?: string };
 }
 
-// A tools/call result carrying SEP-3094 citations. This is the payload the
-// citation interceptors receive on the response phase.
+// The `_meta` key of a tools/call result that holds its citations. SEP-3094
+// proposes a top-level `citations` field. The demo follows the alternative
+// its author raised: `_meta`, read by interceptors.
+export const CITATIONS_META_KEY = CITATIONS_EXTENSION;
+
+/** The path of the citations in a result, for validation messages. */
+export const CITATIONS_PATH = `_meta["${CITATIONS_META_KEY}"]`;
+
+// A tools/call result carrying citations. This is the payload the citation
+// interceptors receive on the response phase. `content` is what the model
+// reads. `_meta` stays with the host.
 export interface CitedToolResult {
     content?: Array<{ type: string; text?: string }>;
-    citations?: unknown;
+    _meta?: Record<string, unknown>;
+}
+
+/** The value at the citations key, which may be malformed. */
+export function citationsOf(result: CitedToolResult): unknown {
+    return result._meta?.[CITATIONS_META_KEY];
+}
+
+/** The result with its citations replaced, or removed when `citations` is undefined. Other `_meta` keys are kept. */
+export function withCitations(result: CitedToolResult, citations?: unknown[]): CitedToolResult {
+    const { _meta, ...rest } = result;
+    const { [CITATIONS_META_KEY]: _dropped, ...meta } = _meta ?? {};
+    if (citations !== undefined) meta[CITATIONS_META_KEY] = citations;
+    return Object.keys(meta).length > 0 ? { ...rest, _meta: meta } : rest;
 }

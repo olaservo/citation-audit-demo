@@ -4,7 +4,7 @@
 import { isIP } from 'node:net';
 
 import { normalizeLabel, parseLinks, unlink, type ParsedLinks } from './markdown-links.ts';
-import type { Citation, CitedToolResult, Severity, ValidationMessage } from './types.ts';
+import { CITATIONS_PATH, citationsOf, withCitations, type Citation, type CitedToolResult, type Severity, type ValidationMessage } from './types.ts';
 
 export interface CheckOutput {
     messages: ValidationMessage[];
@@ -13,7 +13,7 @@ export interface CheckOutput {
 
 interface Parsed {
     links: ParsedLinks;
-    /** Entries of `citations` that are objects, with their array index. */
+    /** Citations that are objects, with their array index. */
     citations: Array<{ index: number; citation: Citation }>;
     /** Shape errors. Only the binding check reports them. */
     messages: ValidationMessage[];
@@ -28,13 +28,14 @@ function parse(result: CitedToolResult): Parsed {
         .join('\n\n');
     const parsed: Parsed = { links: parseLinks(text), citations: [], messages: [] };
 
-    if (result.citations === undefined) return parsed;
-    if (!Array.isArray(result.citations)) {
-        parsed.messages.push({ path: 'citations', message: '`citations` must be an array', severity: 'error' });
+    const raw = citationsOf(result);
+    if (raw === undefined) return parsed;
+    if (!Array.isArray(raw)) {
+        parsed.messages.push({ path: CITATIONS_PATH, message: 'citations must be an array', severity: 'error' });
         return parsed;
     }
-    result.citations.forEach((entry, index) => {
-        const path = `citations[${index}]`;
+    raw.forEach((entry, index) => {
+        const path = `${CITATIONS_PATH}[${index}]`;
         if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
             parsed.messages.push({ path, message: 'citation must be an object', severity: 'error' });
             return;
@@ -53,6 +54,13 @@ function parse(result: CitedToolResult): Parsed {
 function keysOf(entry: unknown): { id?: string; name?: string } {
     const { id, name } = (entry && typeof entry === 'object' ? entry : {}) as Record<string, unknown>;
     return { ...(typeof id === 'string' && id && { id }), ...(typeof name === 'string' && name && { name }) };
+}
+
+/** The index of the citation a validation message's `path` points into, if any. */
+export function citationIndex(path: string | undefined): number | undefined {
+    if (!path?.startsWith(`${CITATIONS_PATH}[`)) return undefined;
+    const index = /^\[(\d+)\]/.exec(path.slice(CITATIONS_PATH.length))?.[1];
+    return index === undefined ? undefined : Number(index);
 }
 
 /** The destination of the markdown link a citation is bound to, if any. */
@@ -77,7 +85,7 @@ function boundKeys(citations: ReadonlyArray<Citation | null>): { labels: Set<str
     return { labels, names };
 }
 
-/** The destination a client would open: `citations` wins over the markdown link. */
+/** The destination a client would open: the citation's `url` wins over the markdown link. */
 function destination(citation: Citation, links: ParsedLinks): string | undefined {
     return citation.url || markdownDestination(citation, links);
 }
@@ -103,12 +111,13 @@ export interface CitationInfo {
     credit?: string;
 }
 
-/** One entry per element of `citations`, with the destination a client would open. */
+/** One entry per citation, with the destination a client would open. */
 export function listCitations(result: CitedToolResult): CitationInfo[] {
     const { links, citations } = parse(result);
-    if (!Array.isArray(result.citations)) return [];
+    const raw = citationsOf(result);
+    if (!Array.isArray(raw)) return [];
     const parsed = new Map(citations.map(({ index, citation }) => [index, citation]));
-    return result.citations.map((entry, index) => {
+    return raw.map((entry, index) => {
         const citation = parsed.get(index);
         if (!citation) {
             const { id, name } = keysOf(entry);
@@ -138,11 +147,12 @@ export interface BindingConfig {
     uncitedSeverity?: Severity;
 }
 
-/** Checks that markers in the text and entries in `citations` line up. */
+/** Checks that markers in the text and the citations in `_meta` line up. */
 export function checkBinding(result: CitedToolResult, config: BindingConfig = {}): CheckOutput {
     const { links, citations, messages } = parse(result);
-    if (config.uncitedSeverity && (result.citations === undefined || (Array.isArray(result.citations) && result.citations.length === 0))) {
-        messages.push({ path: 'citations', message: 'result carries no citations, so its claims cannot be traced to a source', severity: config.uncitedSeverity });
+    const raw = citationsOf(result);
+    if (config.uncitedSeverity && (raw === undefined || (Array.isArray(raw) && raw.length === 0))) {
+        messages.push({ path: CITATIONS_PATH, message: 'result carries no citations, so its claims cannot be traced to a source', severity: config.uncitedSeverity });
     }
     const ids = new Map<string, number>();
     let markerKeyed = 0;
@@ -150,7 +160,7 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
     let blockLevel = 0;
 
     for (const { index, citation } of citations) {
-        const path = `citations[${index}]`;
+        const path = `${CITATIONS_PATH}[${index}]`;
         if (!citation.id && !citation.name && !citation.url) {
             messages.push({ path, message: 'citation has none of `id`, `name`, or `url`', severity: 'error' });
             continue;
@@ -168,7 +178,7 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
         const first = ids.get(label);
         if (first !== undefined) {
             // SEP-3094 has no uniqueness rule for `id`, so this does not strip.
-            messages.push({ path: `${path}.id`, message: `duplicate id "${citation.id}" (also citations[${first}])`, severity: 'warn' });
+            messages.push({ path: `${path}.id`, message: `duplicate id "${citation.id}" (also ${CITATIONS_PATH}[${first}])`, severity: 'warn' });
             continue;
         }
         ids.set(label, index);
@@ -194,18 +204,18 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
         if (citation.url && definition && withoutFragment(citation.url) !== withoutFragment(definition)) {
             messages.push({
                 path: `${path}.url`,
-                message: `markdown definition for [${citation.id}] points to ${definition}; clients prefer the \`citations\` value`,
+                message: `markdown definition for [${citation.id}] points to ${definition}; clients prefer the citation's \`url\``,
                 severity: 'info'
             });
         }
     }
 
-    // A marker shaped like the ids in use, with no entry in `citations`.
+    // A marker shaped like the ids in use, with no citation.
     const idShapes = new Set([...ids.keys()].map(shape));
     for (const marker of links.markers) {
         if (ids.has(marker) || !idShapes.has(shape(marker))) continue;
         const literal = links.definitions.has(marker) ? '' : ' and no link definition, so it renders as literal text';
-        messages.push({ path: 'content', message: `marker [${marker}] has no entry in \`citations\`${literal}`, severity: 'warn' });
+        messages.push({ path: 'content', message: `marker [${marker}] has no citation${literal}`, severity: 'warn' });
     }
 
     return { messages, info: { citations: citations.length, markerKeyed, nameKeyed, blockLevel } };
@@ -277,12 +287,12 @@ export function checkUrlPolicy(result: CitedToolResult, config: UrlPolicyConfig 
     };
 
     for (const { index, citation } of citations) {
-        // A client that ignores `citations` still follows the markdown link.
+        // A client that ignores the citations still follows the markdown link.
         // Its findings go on the citation, which has no field holding the URL.
         const linked = markdownDestination(citation, links);
-        check(`citations[${index}].url`, citation.url);
-        if (linked !== citation.url) check(`citations[${index}]`, linked);
-        check(`citations[${index}].thumbnailUrl`, citation.thumbnailUrl);
+        check(`${CITATIONS_PATH}[${index}].url`, citation.url);
+        if (linked !== citation.url) check(`${CITATIONS_PATH}[${index}]`, linked);
+        check(`${CITATIONS_PATH}[${index}].thumbnailUrl`, citation.thumbnailUrl);
     }
 
     // Links in the text that no citation is bound to.
@@ -322,7 +332,7 @@ export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup,
 
     for (const { index, citation } of citations) {
         if (!citation.text) continue;
-        const path = `citations[${index}].text`;
+        const path = `${CITATIONS_PATH}[${index}].text`;
         const url = destination(citation, links);
         const source = url ? await lookup(withoutFragment(url)) : undefined;
         if (source === undefined) {
@@ -365,7 +375,7 @@ export function checkLicense(result: CitedToolResult, config: LicenseConfig = {}
     for (const { index, citation } of citations) {
         // The binding check reports an entry with nothing to identify it.
         if (!citation.id && !citation.name && !citation.url) continue;
-        const path = `citations[${index}]`;
+        const path = `${CITATIONS_PATH}[${index}]`;
         if (!citation.license) {
             counts.unlicensed++;
             messages.push({
@@ -408,24 +418,24 @@ export interface StripOutput {
 export async function stripBadCitations(result: CitedToolResult, lookup: SourceLookup, config: UrlPolicyConfig = {}): Promise<StripOutput> {
     const outputs = [checkBinding(result), checkUrlPolicy(result, config), await checkQuotes(result, lookup)];
     const errors = outputs.flatMap(output => output.messages).filter(message => message.severity === 'error');
-    if (errors.length === 0 || result.citations === undefined) return { result, stripped: [] };
+    const raw = citationsOf(result);
+    if (errors.length === 0 || raw === undefined) return { result, stripped: [] };
 
-    // `citations` itself is malformed: drop the field.
-    if (!Array.isArray(result.citations)) {
-        const { citations: _dropped, ...rest } = result;
-        return { result: rest, stripped: [{ index: -1, reasons: errors.map(error => error.message) }] };
+    // The value itself is malformed: drop the key.
+    if (!Array.isArray(raw)) {
+        return { result: withCitations(result), stripped: [{ index: -1, reasons: errors.map(error => error.message) }] };
     }
 
     const reasons = new Map<number, string[]>();
     for (const error of errors) {
-        const index = /^citations\[(\d+)\]/.exec(error.path ?? '')?.[1];
+        const index = citationIndex(error.path);
         if (index === undefined) continue;
-        reasons.set(Number(index), [...(reasons.get(Number(index)) ?? []), error.message]);
+        reasons.set(index, [...(reasons.get(index) ?? []), error.message]);
     }
     // Errors about links in the text that no citation is bound to strip nothing.
     if (reasons.size === 0) return { result, stripped: [] };
 
-    const entries = result.citations as Array<Citation | null>;
+    const entries = raw as Array<Citation | null>;
     const kept = entries.filter((_, index) => !reasons.has(index));
     const stripped = [...reasons]
         .sort(([a], [b]) => a - b)
@@ -438,13 +448,15 @@ export async function stripBadCitations(result: CitedToolResult, lookup: SourceL
     const names = new Set([...strippedKeys.names].filter(name => !keptKeys.names.has(name)));
 
     return {
-        result: {
-            ...result,
-            content: result.content?.map(block =>
-                block.type === 'text' && typeof block.text === 'string' ? { ...block, text: unlink(block.text, labels, names) } : block
-            ),
-            citations: kept
-        },
+        result: withCitations(
+            {
+                ...result,
+                content: result.content?.map(block =>
+                    block.type === 'text' && typeof block.text === 'string' ? { ...block, text: unlink(block.text, labels, names) } : block
+                )
+            },
+            kept
+        ),
         stripped
     };
 }

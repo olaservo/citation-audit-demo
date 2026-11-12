@@ -146,10 +146,13 @@ async function openUrl($: EngineInterface, url: string): Promise<void> {
   if (ran.exitCode !== 0) $.ui.toast(`Could not open ${url}`)
 }
 
+/** Where the citations sit in a tool result. Matches CITATIONS_PATH in src/types.ts. */
+const CITATIONS_PATH = '_meta["io.modelcontextprotocol/citations"]'
+
 /**
  * Runs the host in src/audit-cli.ts: it calls the tool itself, as a client
  * that declares citations, and runs the interceptors over the result. Claude
- * Code's own MCP client drops the top-level `citations` field.
+ * Code's own MCP client hands a mod the result's `content` and not its `_meta`.
  */
 async function runAudit($: EngineInterface, dir: string, current: AuditMode, args: Record<string, unknown>): Promise<AuditReport> {
   const ran = await $.process.run(['node', '--import', 'tsx', 'src/audit-cli.ts', current], {
@@ -166,7 +169,7 @@ function contextFor(report: AuditReport): string {
   const by = (status: CitationRow['status']) => report.citations.filter(c => c.status === status)
   const withReasons = (c: CitationRow) => `- [${c.key}] ${c.reasons.join('; ')}`
   // A marker with no entry is a finding on `content`, not on a citation.
-  const other = report.findings.filter(f => f.severity !== 'info' && !f.path?.startsWith('citations['))
+  const other = report.findings.filter(f => f.severity !== 'info' && !f.path?.startsWith(`${CITATIONS_PATH}[`))
   return [
     `Citation audit (mode ${report.mode}): ${counts(report.citations)}.`,
     ...(by('passed').length ? ['Citations that passed every check:', ...by('passed').map(c => `- ${citationLine(c)}`)] : []),

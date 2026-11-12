@@ -11,7 +11,7 @@ const STRIPPED: AuditReport = {
     { key: 'c1', name: 'MUM01 - Seasonally Adjusted Monthly Unemployment', url: 'https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment', status: 'passed', quote: 'verified', license: 'CC BY 4.0', credit: 'Central Statistics Office', reasons: [] },
     { key: 'c2', name: 'MUM01 - Seasonally Adjusted Monthly Unemployment', url: 'https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment', status: 'stripped', quote: 'not found', reasons: ['quoted text does not appear'] },
   ],
-  findings: [{ interceptor: 'citation-quote-check', severity: 'error', path: 'citations[1].text', message: 'quoted text does not appear' }],
+  findings: [{ interceptor: 'citation-quote-check', severity: 'error', path: '_meta["io.modelcontextprotocol/citations"][1].text', message: 'quoted text does not appear' }],
 }
 
 const BLOCKED: AuditReport = {
@@ -27,7 +27,7 @@ const UNCITED: AuditReport = {
   outcome: 'delivered',
   content: [{ type: 'text', text: 'Consumer prices rose 2.8 percent.' }],
   citations: [],
-  findings: [{ interceptor: 'citation-binding', severity: 'warn', path: 'citations', message: 'result carries no citations, so its claims cannot be traced to a source' }],
+  findings: [{ interceptor: 'citation-binding', severity: 'warn', path: '_meta["io.modelcontextprotocol/citations"]', message: 'result carries no citations, so its claims cannot be traced to a source' }],
 }
 
 /** The engine stamps a run's origin and presentation; a test names the rest. */

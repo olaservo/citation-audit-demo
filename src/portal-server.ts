@@ -1,6 +1,7 @@
 // A sample MCP server for Ireland's open data portal, data.gov.ie. Its
 // `statistics` tool answers with SEP-3094 citations to the datasets the
-// figures come from. The catalogue records in corpus/datasets.json and the
+// figures come from. The markers and link definitions are in the text, for
+// the model. The citation objects are in the result's `_meta`, for the host. The catalogue records in corpus/datasets.json and the
 // quoted rows are real, retrieved on 2026-11-11. The `unemployment` topic
 // also returns flawed citations on purpose, so the auditor has something to
 // find. Every flawed citation points at an invented dataset for the invented
@@ -11,7 +12,7 @@ import { CLIENT_CAPABILITIES_META_KEY, McpServer, type ClientCapabilities } from
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 
-import { CITATIONS_EXTENSION, type Citation } from './types.ts';
+import { CITATIONS_EXTENSION, CITATIONS_META_KEY, type Citation } from './types.ts';
 
 interface Answer {
     text: string;
@@ -65,7 +66,7 @@ function cite(slug: string, { id, ...extra }: Partial<Citation> = {}): Citation 
     };
 }
 
-// SEP-3094 has a server omit `citations` for a client that did not declare
+// SEP-3094 has a server omit citations for a client that did not declare
 // support. With PORTAL_REQUIRE_RENDER=1 the portal goes further and does not
 // answer a client that will not show them. The SEP does not define this.
 const REQUIRE_RENDER = process.env.PORTAL_REQUIRE_RENDER === '1';
@@ -165,7 +166,7 @@ function buildServer(): McpServer {
             if (REQUIRE_RENDER && !declared?.render) return { isError: true, content: [{ type: 'text', text: REFUSAL }] };
             return {
                 content: [{ type: 'text', text: answer.text }],
-                ...(declared && answer.citations.length > 0 && { citations: answer.citations })
+                ...(declared && answer.citations.length > 0 && { _meta: { [CITATIONS_META_KEY]: answer.citations } })
             };
         }
     );
