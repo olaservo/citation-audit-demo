@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 import { checkBinding, checkLicense, checkQuotes, checkUrlPolicy, stripBadCitations, type CheckOutput, type SourceLookup } from './citation-checks.ts';
 import {
+    hookMatches,
     INTERCEPTORS_EXTENSION,
     InvokeParamsSchema,
     InvokeResultSchema,
@@ -25,6 +26,7 @@ import {
 } from './types.ts';
 
 const HOOKS: Hook[] = [{ events: ['tools/call'], phase: 'response' }];
+const HOOK_PHASES = ['request', 'response'] as const;
 
 // Snapshots of cited sources, keyed by URL in corpus/index.json. A deployed
 // auditor would fetch sources under the SEP-3094 dereferencing rules.
@@ -89,7 +91,7 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
             type: 'validation',
             hooks: HOOKS,
             mode: 'audit',
-            // The corpus lookup can fail; an unreadable corpus should not block tool results.
+            // The corpus lookup can fail. An unreadable corpus should not block tool results.
             failOpen: true,
             configSchema: {
                 type: 'object',
@@ -140,10 +142,6 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
 
 const SEVERITY_RANK: Record<Severity, number> = { info: 0, warn: 1, error: 2 };
 
-function matches(hooks: Hook[], event: string, phase: string): boolean {
-    return hooks.some(hook => hook.phase === phase && (hook.events.includes(event) || hook.events.includes('*')));
-}
-
 function timeout(name: string, phase: string, timeoutMs: number): Promise<never> {
     return new Promise((_, reject) => {
         const timer = setTimeout(
@@ -163,7 +161,7 @@ function buildServer(): McpServer {
         { params: ListInterceptorsParamsSchema, result: ListInterceptorsResultSchema },
         params => ({
             interceptors: INTERCEPTORS.map(entry => entry.descriptor).filter(
-                descriptor => !params?.event || descriptor.hooks.some(hook => hook.events.includes(params.event!) || hook.events.includes('*'))
+                descriptor => !params?.event || HOOK_PHASES.some(phase => hookMatches(descriptor.hooks, params.event!, phase))
             )
         })
     );
@@ -176,7 +174,7 @@ function buildServer(): McpServer {
             if (!entry) {
                 throw new ProtocolError(-32602, `Unknown interceptor: ${params.name}`, { interceptor: params.name });
             }
-            if (!matches(entry.descriptor.hooks, params.event, params.phase)) {
+            if (!hookMatches(entry.descriptor.hooks, params.event, params.phase)) {
                 throw new ProtocolError(-32602, `${params.name} does not hook ${params.event} (${params.phase})`, {
                     interceptor: params.name
                 });

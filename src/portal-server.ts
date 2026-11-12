@@ -56,7 +56,7 @@ function cite(slug: string, extra: Partial<Citation> = {}): Citation {
         ...(extra.id && { id: extra.id }),
         name: dataset.title,
         ...(dataset.license_url && { license: dataset.license_url }),
-        ...(dataset.organization && { publisher: { '@type': 'Organization', name: dataset.organization.title } }),
+        ...(dataset.organization && { publisher: { type: 'Organization', name: dataset.organization.title } }),
         ...(dataset.metadata_modified && { datePublished: dataset.metadata_modified.slice(0, 10) }),
         ...extra
     };
@@ -120,7 +120,7 @@ const ANSWERS: Record<string, Answer> = {
                 name: 'Northmark Regional Unemployment (staging)',
                 thumbnailUrl: 'file:///srv/ckan/storage/regional-chart.png',
                 license: 'https://creativecommons.org/licenses/by/4.0/',
-                publisher: { '@type': 'Organization', name: 'Portal staging' }
+                publisher: { type: 'Organization', name: 'Portal staging' }
             },
             // No [c5] marker in the text: the dataset is credited for the whole answer.
             cite(QUARTERLY, { id: 'c5', url: `${PORTAL}/${QUARTERLY}`, text: row.longTerm }),

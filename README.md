@@ -73,7 +73,7 @@ A passed citation that quotes its source also shows what the quote check found:
 | `unverified` | The auditor has no copy of the source, so the quote was not checked. |
 | `passed` | The citation quotes nothing. |
 
-Each check reports at one of three severities: `error`, `warn`, or `info`. Only an `error` can flag, strip, or block. A whole result is `blocked` when an error comes from a check running in `active` mode. The host then returns error `-32602` and delivers nothing.
+Each check reports at one of three severities: `error`, `warn`, or `info`. Only an `error` can flag, strip, or block. A whole result is `blocked` when an error comes from a check running in `active` mode, or when an active check with `failOpen: false` crashes or times out. The host then returns error `-32602` and delivers nothing. An active mutation that fails the same way also blocks the result, with error `-32603`.
 
 ## Processes
 
@@ -172,7 +172,7 @@ Then ask for statistics on `unemployment`, `population`, or `inflation`. Claude 
 - A band above the prompt shows the last audit: the counts and one line per citation, with `Details` and `Hide` buttons. Each line starts with the citation's state or quote label (see "Reading the audit").
 - Only a passed citation is drawn as a link, with its license, who to credit, and an `open` button. The button opens the exact URL, even when a narrow window cuts the URL short in the row.
 - An answer with no citations gets a warning line.
-- The same lines are drawn under the tool call's row, and the mod unfolds the group of tool calls that holds it.
+- The same lines, without the `open` buttons, are drawn under the tool call's row, and the mod unfolds the group of tool calls that holds it.
 - `/citation-audit` opens a pane with the last audit and its findings. `/citation-audit audit`, `strip`, or `block` sets the mode, which maps to scenarios 2, 3, and 4 above. The pane has a button for each mode.
 - In `block` mode the model receives the `-32602` error in place of the result.
 
@@ -202,7 +202,7 @@ The demo ran into these where attribution, SEP-3094, and SEP-2624 meet but don't
 - `citation-url-policy` checks the host as written. It does not resolve DNS names, so a public name that resolves to a private address passes.
 - SEP-2624 requires a timed-out interceptor to be cancelled. The Interceptor Server returns `-32000` on time and lets the check finish.
 - The result schemas require `interceptor`, `type`, and `phase`, as the SEP-2624 interfaces do. The SEP's example responses omit them, and a server answering like the examples is treated as a failed invocation.
-- A halted mutation returns the original payload as `lastValidPayload`. The SEP does not define the field.
+- SEP-2624 names `lastValidPayload` in its mutation error example but does not say what it holds. The demo returns the original payload, so no mutation applies when one halts.
 - A citation's `@context` is ignored. Every citation is read in the default MCP format.
 - With one mutator, priority ordering and passing each mutation's output to the next are implemented in `src/invoker.ts` but not exercised. `failOpen`, timeouts, and hook narrowing are also implemented and not exercised.
 - The filter reruns three of the checks itself. SEP-2624 gives a mutator no access to validator results, and interceptor state propagation is listed as future work.

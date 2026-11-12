@@ -77,8 +77,8 @@ function shortReason(reasons: readonly string[]): string {
 /**
  * One line per citation, the ones a check failed first. Only a citation that
  * passed every check is drawn with a link, after its license and who to
- * credit. The link has no label: a terminal without hyperlinks draws a
- * labelled link as the label and then the URL, which pushed the rest off the row.
+ * credit. The link has no label. A terminal without hyperlinks draws a
+ * labelled link as the label and then the URL, which pushes the rest off the row.
  * An answer with no citations gets one line saying so.
  */
 function citationRows({ Box, Button, Link, Text }: Els, citations: readonly CitationRow[], open?: (url: string) => void) {

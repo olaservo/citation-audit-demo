@@ -134,7 +134,7 @@ test('license check wants a license, and someone to credit when the license requ
     const result = {
         content: text('No markers.'),
         citations: [
-            { name: 'A', license: CC_BY, publisher: { '@type': 'Organization', name: 'Office' } },
+            { name: 'A', license: CC_BY, publisher: { type: 'Organization', name: 'Office' } },
             { name: 'B', license: 'ODbL-1.0', author: [{ name: 'Someone' }] },
             { name: 'C', license: 'https://creativecommons.org/publicdomain/zero/1.0/' },
             { name: 'D', license: CC_BY, publisher: { name: ' ' } },

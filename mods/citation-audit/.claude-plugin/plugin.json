@@ -13,7 +13,7 @@
     "mode": {
       "type": "string",
       "title": "Audit mode",
-      "description": "audit: report only. strip: remove citations that fail a check, except a license check. block: refuse a result with a failing citation",
+      "description": "audit: report only. strip: remove citations that fail a check, except a license check. block: refuse a result when the URL, quote, or license check fails, and strip citations that fail only the binding check",
       "options": ["audit", "strip", "block"],
       "default": "audit"
     },

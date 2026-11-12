@@ -19,6 +19,11 @@ export interface Hook {
     phase: Phase;
 }
 
+/** Whether any hook covers the event on the phase. `"*"` matches every event. */
+export function hookMatches(hooks: Hook[], event: string, phase: string): boolean {
+    return hooks.some(hook => hook.phase === phase && (hook.events.includes(event) || hook.events.includes('*')));
+}
+
 // Type aliases, so they are assignable to the loose zod schemas below.
 export type Interceptor = {
     name: string;

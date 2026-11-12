@@ -3,6 +3,7 @@
 import type { Client } from '@modelcontextprotocol/client';
 
 import {
+    hookMatches,
     ListInterceptorsResultSchema,
     MutationResultSchema,
     ValidationResultSchema,
@@ -64,10 +65,6 @@ export async function discover(server: Client, event?: string): Promise<Intercep
     return result.interceptors as Interceptor[];
 }
 
-function hookMatches(hooks: Hook[], event: string, phase: Phase): boolean {
-    return hooks.some(hook => hook.phase === phase && (hook.events.includes(event) || hook.events.includes('*')));
-}
-
 /** Override hooks may narrow the declared hooks and MUST NOT widen them. */
 function assertNarrowing(interceptor: Interceptor, overrides: Hook[]): void {
     for (const hook of overrides) {
@@ -91,7 +88,7 @@ function resolvePolicy({ interceptor, overrides }: Selected): Policy {
     return {
         interceptor: interceptor.name,
         mode: overrides?.mode ?? interceptor.mode ?? 'active',
-        modeSource: overrides?.mode ? 'override' : 'default',
+        modeSource: overrides?.mode === undefined ? 'default' : 'override',
         failOpen: overrides?.failOpen ?? interceptor.failOpen ?? false,
         failOpenSource: overrides?.failOpen === undefined ? 'default' : 'override'
     };

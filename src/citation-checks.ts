@@ -55,6 +55,21 @@ function markdownDestination(citation: Citation, links: ParsedLinks): string | u
     return undefined;
 }
 
+function withoutFragment(url: string): string {
+    return url.split('#')[0]!;
+}
+
+/** The labels and names that bind these citations to links in the text. */
+function boundKeys(citations: ReadonlyArray<Citation | null>): { labels: Set<string>; names: Set<string> } {
+    const labels = new Set<string>();
+    const names = new Set<string>();
+    for (const citation of citations) {
+        if (citation?.id) labels.add(normalizeLabel(citation.id));
+        else if (citation?.name) names.add(citation.name);
+    }
+    return { labels, names };
+}
+
 /** The destination a client would open: `citations` wins over the markdown link. */
 function destination(citation: Citation, links: ParsedLinks): string | undefined {
     return citation.url || markdownDestination(citation, links);
@@ -157,7 +172,7 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
                 severity: 'warn'
             });
         }
-        if (citation.url && definition && citation.url.split('#')[0] !== definition.split('#')[0]) {
+        if (citation.url && definition && withoutFragment(citation.url) !== withoutFragment(definition)) {
             messages.push({
                 path: `${path}.url`,
                 message: `markdown definition for [${citation.id}] points to ${definition}; clients prefer the \`citations\` value`,
@@ -211,7 +226,12 @@ function isPrivateHost(hostname: string): boolean {
     return false;
 }
 
-/** Applies the SEP-3094 dereferencing rules to every URL a client might fetch. */
+/**
+ * A deployment policy based on the SEP-3094 dereferencing rules, applied to
+ * every URL a reader could follow. The SEP restricts only automatic fetching
+ * and allows MCP-resolved schemes. This check reports any scheme outside the
+ * allow-list.
+ */
 export function checkUrlPolicy(result: CitedToolResult, config: UrlPolicyConfig = {}): CheckOutput {
     const { links, citations, messages } = parse(result);
     const allowed = (config.allowedSchemes ?? ['https']).map(scheme => scheme.toLowerCase());
@@ -245,9 +265,8 @@ export function checkUrlPolicy(result: CitedToolResult, config: UrlPolicyConfig 
     }
 
     // Links in the text that no citation is bound to.
-    const ids = new Set(citations.flatMap(({ citation }) => (citation.id ? [normalizeLabel(citation.id)] : [])));
-    const names = new Set(citations.flatMap(({ citation }) => (citation.name && !citation.id ? [citation.name] : [])));
-    for (const [label, url] of links.definitions) if (!ids.has(label)) check('content', url);
+    const { labels, names } = boundKeys(citations.map(({ citation }) => citation));
+    for (const [label, url] of links.definitions) if (!labels.has(label)) check('content', url);
     for (const link of links.inline) if (!names.has(link.text)) check('content', link.url);
 
     return { messages, info: { urlsChecked: checked } };
@@ -279,19 +298,19 @@ export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup,
         if (!citation.text) continue;
         const path = `citations[${index}].text`;
         const url = destination(citation, links);
-        const source = url ? await lookup(url.split('#')[0]!) : undefined;
+        const source = url ? await lookup(withoutFragment(url)) : undefined;
         if (source === undefined) {
             counts.unverified++;
             messages.push({
                 path,
-                message: `quote not verified: ${url ? `no snapshot of ${url.split('#')[0]}` : 'citation has no destination'}`,
+                message: `quote not verified: ${url ? `no snapshot of ${withoutFragment(url)}` : 'citation has no destination'}`,
                 severity: config.unverifiedSeverity ?? 'info'
             });
         } else if (normalizeQuote(source).includes(normalizeQuote(citation.text))) {
             counts.verified++;
         } else {
             counts.notFound++;
-            messages.push({ path, message: `quoted text does not appear in ${url!.split('#')[0]}: "${citation.text}"`, severity: 'error' });
+            messages.push({ path, message: `quoted text does not appear in ${withoutFragment(url!)}: "${citation.text}"`, severity: 'error' });
         }
     }
     return { messages, info: counts };
@@ -384,10 +403,10 @@ export async function stripBadCitations(result: CitedToolResult, lookup: SourceL
         });
 
     // Leave a marker alone when a kept citation still uses it (a stripped duplicate id).
-    const keptIds = new Set(kept.flatMap(citation => (citation?.id ? [normalizeLabel(citation.id)] : [])));
-    const keptNames = new Set(kept.flatMap(citation => (citation?.name && !citation.id ? [citation.name] : [])));
-    const labels = new Set(stripped.flatMap(entry => (entry.id ? [normalizeLabel(entry.id)] : [])).filter(label => !keptIds.has(label)));
-    const names = new Set(stripped.flatMap(entry => (entry.name && !entry.id ? [entry.name] : [])).filter(name => !keptNames.has(name)));
+    const keptKeys = boundKeys(kept);
+    const strippedKeys = boundKeys(stripped);
+    const labels = new Set([...strippedKeys.labels].filter(label => !keptKeys.labels.has(label)));
+    const names = new Set([...strippedKeys.names].filter(name => !keptKeys.names.has(name)));
 
     return {
         result: {
