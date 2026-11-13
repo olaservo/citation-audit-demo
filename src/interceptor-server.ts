@@ -60,7 +60,7 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
         descriptor: {
             name: 'citation-binding',
             version: '0.1.0',
-            description: 'Checks that citation markers in tool result text and the citations in its `_meta` line up (SEP-3094)',
+            description: 'Checks that the citations in a tool result\'s `_meta` line up with markers in its text or with the values their pointers name',
             type: 'validation',
             hooks: HOOKS,
             mode: 'audit',

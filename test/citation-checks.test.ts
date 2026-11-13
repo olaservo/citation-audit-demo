@@ -29,7 +29,7 @@ test('binding accepts the three minimalist forms from SEP-3094', () => {
     };
     const { messages, info } = checkBinding(result);
     assert.deepEqual(messages, []);
-    assert.deepEqual(info, { citations: 3, markerKeyed: 2, nameKeyed: 1, blockLevel: 0 });
+    assert.deepEqual(info, { citations: 3, markerKeyed: 2, nameKeyed: 1, blockLevel: 0, pointerKeyed: 0 });
 });
 
 test('binding treats an unmatched name as a block-level citation', () => {
@@ -57,7 +57,7 @@ test('binding reports empty, duplicate, unbound, and dangling entries, and only 
 
 test('binding counts an id with no marker as block-level', () => {
     const { info } = checkBinding({ content: text(`One [c1].\n\n[c1]: ${URL_A}`), _meta: meta([{ id: 'c1' }, { id: 'c2', url: URL_A }]) });
-    assert.deepEqual(info, { citations: 2, markerKeyed: 1, nameKeyed: 0, blockLevel: 1 });
+    assert.deepEqual(info, { citations: 2, markerKeyed: 1, nameKeyed: 0, blockLevel: 1, pointerKeyed: 0 });
 });
 
 test('only the binding check rejects a non-array citations value and a field of the wrong type', async () => {
@@ -312,4 +312,30 @@ test('filter keeps the other keys of `_meta`', async () => {
 
     const malformed = { content: text('One.'), _meta: { ...serverInfo, ...meta({ id: 'c1' }) } };
     assert.deepEqual((await stripBadCitations(malformed, async () => undefined)).result._meta, serverInfo);
+});
+
+test('binding accepts a pointer to a value in the result and needs no marker for it', () => {
+    const structuredContent = { rows: [{ rate: 4.8 }], 'a/b': 1 };
+    const pointers = ['/structuredContent/rows/0/rate', '/structuredContent/a~1b', '/content/0', ''];
+    const result = { content: text('No markers.'), structuredContent, _meta: meta(pointers.map(pointer => ({ id: 'c1', name: 'A', pointer }))) };
+    const { messages, info } = checkBinding(result);
+    assert.deepEqual(messages, []);
+    assert.deepEqual(info, { citations: 4, markerKeyed: 0, nameKeyed: 0, blockLevel: 0, pointerKeyed: 4 });
+});
+
+test('a pointer that names nothing is an error, and the filter removes the citation', async () => {
+    const structuredContent = { rows: [{ rate: 4.8 }] };
+    const pointers = ['/structuredContent/rows/1', '/structuredContent/rows/00', '/structuredContent/missing', 'structuredContent'];
+    const result = {
+        content: text('No markers.'),
+        structuredContent,
+        _meta: meta([{ name: 'Kept', pointer: '/structuredContent/rows/0' }, ...pointers.map(pointer => ({ name: 'A', pointer }))])
+    };
+    assert.deepEqual(
+        checkBinding(result).messages.map(message => [message.path, message.severity]),
+        [1, 2, 3, 4].map(index => [at(index, '.pointer'), 'error'])
+    );
+    const { result: clean } = await stripBadCitations(result, async () => undefined);
+    assert.deepEqual(citationsOf(clean), [{ name: 'Kept', pointer: '/structuredContent/rows/0' }]);
+    assert.deepEqual(clean.structuredContent, structuredContent);
 });

@@ -130,6 +130,8 @@ export interface Citation {
     id?: string;
     name?: string;
     url?: string;
+    /** A JSON Pointer (RFC 6901) to the part of the result the citation supports. Not in SEP-3094. */
+    pointer?: string;
     text?: string;
     description?: string;
     thumbnailUrl?: string;
@@ -156,7 +158,25 @@ export const CITATIONS_PATH = `_meta["${CITATIONS_META_KEY}"]`;
 // reads. `_meta` stays with the host.
 export interface CitedToolResult {
     content?: Array<{ type: string; text?: string }>;
+    structuredContent?: unknown;
     _meta?: Record<string, unknown>;
+}
+
+/** The text the model reads. In the current result shape that is the text blocks of `content`. */
+export function textOf(result: CitedToolResult): string {
+    return (Array.isArray(result.content) ? result.content : [])
+        .filter(block => block.type === 'text' && typeof block.text === 'string')
+        .map(block => block.text)
+        .join('\n\n');
+}
+
+/** The result with each piece of that text rewritten. */
+export function mapText(result: CitedToolResult, rewrite: (text: string) => string): CitedToolResult {
+    if (!Array.isArray(result.content)) return result;
+    return {
+        ...result,
+        content: result.content.map(block => (block.type === 'text' && typeof block.text === 'string' ? { ...block, text: rewrite(block.text) } : block))
+    };
 }
 
 /** The value at the citations key, which may be malformed. */

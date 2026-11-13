@@ -4,7 +4,7 @@
 import { isIP } from 'node:net';
 
 import { normalizeLabel, parseLinks, unlink, type ParsedLinks } from './markdown-links.ts';
-import { CITATIONS_PATH, citationsOf, withCitations, type Citation, type CitedToolResult, type Severity, type ValidationMessage } from './types.ts';
+import { CITATIONS_PATH, citationsOf, mapText, textOf, withCitations, type Citation, type CitedToolResult, type Severity, type ValidationMessage } from './types.ts';
 
 export interface CheckOutput {
     messages: ValidationMessage[];
@@ -19,14 +19,10 @@ interface Parsed {
     messages: ValidationMessage[];
 }
 
-const STRING_FIELDS = ['id', 'name', 'url', 'text', 'description', 'thumbnailUrl', 'datePublished', 'display', 'license'] as const;
+const STRING_FIELDS = ['id', 'name', 'url', 'pointer', 'text', 'description', 'thumbnailUrl', 'datePublished', 'display', 'license'] as const;
 
 function parse(result: CitedToolResult): Parsed {
-    const text = (Array.isArray(result.content) ? result.content : [])
-        .filter(block => block.type === 'text' && typeof block.text === 'string')
-        .map(block => block.text)
-        .join('\n\n');
-    const parsed: Parsed = { links: parseLinks(text), citations: [], messages: [] };
+    const parsed: Parsed = { links: parseLinks(textOf(result)), citations: [], messages: [] };
 
     const raw = citationsOf(result);
     if (raw === undefined) return parsed;
@@ -137,6 +133,25 @@ export function listCitations(result: CitedToolResult): CitationInfo[] {
     });
 }
 
+/** Whether a JSON Pointer (RFC 6901) names a value in the result. The empty pointer names the whole result. */
+function resolves(result: CitedToolResult, pointer: string): boolean {
+    if (pointer === '') return true;
+    if (!pointer.startsWith('/')) return false;
+    let value: unknown = result;
+    for (const token of pointer.slice(1).split('/')) {
+        const key = token.replace(/~1/g, '/').replace(/~0/g, '~');
+        if (Array.isArray(value)) {
+            if (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length) return false;
+            value = value[Number(key)];
+        } else if (value !== null && typeof value === 'object' && Object.hasOwn(value, key)) {
+            value = (value as Record<string, unknown>)[key];
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
 /** `c1` and `c12` share the shape `cN`. Used to spot markers that look like citation ids. */
 function shape(label: string): string {
     return label.replace(/\d+/g, 'N');
@@ -147,7 +162,7 @@ export interface BindingConfig {
     uncitedSeverity?: Severity;
 }
 
-/** Checks that markers in the text and the citations in `_meta` line up. */
+/** Checks that the citations in `_meta` line up with markers in the text, or with the values their pointers name. */
 export function checkBinding(result: CitedToolResult, config: BindingConfig = {}): CheckOutput {
     const { links, citations, messages } = parse(result);
     const raw = citationsOf(result);
@@ -156,6 +171,7 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
     }
     const ids = new Map<string, number>();
     let markerKeyed = 0;
+    let pointerKeyed = 0;
     let nameKeyed = 0;
     let blockLevel = 0;
 
@@ -167,6 +183,14 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
         }
         if (citation.display && !['embedded', 'external', 'auto'].includes(citation.display)) {
             messages.push({ path: `${path}.display`, message: `unknown display hint "${citation.display}"`, severity: 'warn' });
+        }
+        // A pointer binds the citation to a value in the result, so it needs no marker.
+        if (citation.pointer !== undefined) {
+            pointerKeyed++;
+            if (!resolves(result, citation.pointer)) {
+                messages.push({ path: `${path}.pointer`, message: `pointer "${citation.pointer}" names nothing in the result`, severity: 'error' });
+            }
+            continue;
         }
         if (!citation.id) {
             if (links.inline.some(link => link.text === citation.name)) nameKeyed++;
@@ -218,7 +242,7 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
         messages.push({ path: 'content', message: `marker [${marker}] has no citation${literal}`, severity: 'warn' });
     }
 
-    return { messages, info: { citations: citations.length, markerKeyed, nameKeyed, blockLevel } };
+    return { messages, info: { citations: citations.length, markerKeyed, nameKeyed, pointerKeyed, blockLevel } };
 }
 
 export interface UrlPolicyConfig {
@@ -448,15 +472,7 @@ export async function stripBadCitations(result: CitedToolResult, lookup: SourceL
     const names = new Set([...strippedKeys.names].filter(name => !keptKeys.names.has(name)));
 
     return {
-        result: withCitations(
-            {
-                ...result,
-                content: result.content?.map(block =>
-                    block.type === 'text' && typeof block.text === 'string' ? { ...block, text: unlink(block.text, labels, names) } : block
-                )
-            },
-            kept
-        ),
+        result: withCitations(mapText(result, text => unlink(text, labels, names)), kept),
         stripped
     };
 }

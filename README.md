@@ -31,14 +31,19 @@ Kept:
 - The binding: CommonMark links in `content`, keyed by `id` or `name`.
 - The `render` flag, and omitting citations for a client that declares no support.
 
+Added:
+
+- `pointer`, a JSON Pointer (RFC 6901) from a citation to the part of the result it supports, such as `/structuredContent/population/2026`. It binds a citation to a value that has no text to hold a marker. The empty pointer is the whole result.
+
 Changed:
 
-- The citations travel in `_meta["io.modelcontextprotocol/citations"]`. A result with them is still a valid `CallToolResult`, so no schema change is needed.
+- The citations travel in the result's `_meta["io.modelcontextprotocol/citations"]`. A result with them is still a valid `CallToolResult`, so no schema change is needed.
+- The citations are not in a content block's `_meta`. A result need not have text blocks, and the proposed result shape below has no content blocks.
 - Support is declared as an extension, in `extensions["io.modelcontextprotocol/citations"]`. The SDK drops a top-level `citations` capability.
 - The `io.modelcontextprotocol/` prefix is reserved for the specification and official extensions. The demo uses it for a key that no extension defines yet.
 - No `mcp:annotations.audience` on a citation. Few clients act on `audience`, so a server cannot count on it. Where a citation goes is set by where it sits: markers in the text for the model, objects in `_meta` for the host.
 
-The checks depend on two things: text the model reads, with markers in it, and a list of citation objects the host reads. Where the list sits is set in one place, `citationsOf`, `withCitations`, and `CITATIONS_PATH` in `src/types.ts`. The mod repeats `CITATIONS_PATH` in `hooks/register.tsx`. The text is read in `parse` and rewritten in `stripBadCitations`, both in `src/citation-checks.ts`.
+The checks depend on two things: text the model reads, with markers in it, and a list of citation objects the host reads. Both are set in `src/types.ts`: `citationsOf`, `withCitations`, and `CITATIONS_PATH` for the list, `textOf` and `mapText` for the text. The mod repeats `CITATIONS_PATH` in `hooks/register.tsx`. The checks themselves do not touch `content`.
 
 ### Against the proposed tool result shape
 
@@ -46,8 +51,8 @@ The Core Primitives Working Group has an open proposal, [Unified Typed Tool Resu
 
 - The proposal moves UI-only data for MCP Apps into `_meta["io.modelcontextprotocol/ui"]`. Citation metadata the host draws, under its own `_meta` key, follows the same pattern. The demo's carrier would not move.
 - A top-level `citations` field would add a field to a result the proposal reduces to `result`, `resultSchema`, `isError`, and `_meta`.
-- The demo reads the answer's text from `content` blocks. Under the proposal that text is `result` when its schema is a string, or the strings in an array of content blocks. `parse` and `stripBadCitations` would change.
-- SEP-3094 binds a citation to a claim with a markdown link in text. A typed `result`, such as an array of rows, has no text to hold a marker.
+- The demo reads the answer's text from `content` blocks. Under the proposal that text is `result` when its schema is a string, or the strings in an array of content blocks. `textOf` and `mapText` would change.
+- SEP-3094 binds a citation to a claim with a markdown link in text. A typed `result`, such as an array of rows, has no text to hold a marker. The demo's `pointer` covers that case, and under the proposal it would point into `result`.
 - In a direct call the host puts `result` into model context, so the markers reach the model as they do now. In programmatic tool calling the generated code receives `result` as a value and chooses what to print. The markers reach the model only if the code prints them, and the proposal does not say whether the code sees `_meta`.
 - The proposal removes `annotations.audience` from tool results, and its problem statement says servers cannot rely on the hint for routing. SEP-3094 gives each citation an `mcp:annotations.audience`. The demo drops it.
 
@@ -98,7 +103,7 @@ All five interceptors hook the `tools/call` response and declare `mode: "audit"`
 
 | Name | Type | Reports or does |
 | --- | --- | --- |
-| `citation-binding` | validation | Malformed entries, entries with none of `id`, `name`, `url`, and markers in `content` that don't line up with entries in `_meta`. Optionally, a result with no citations. |
+| `citation-binding` | validation | Malformed entries, entries with none of `id`, `name`, `url`, markers in `content` that don't line up with entries in `_meta`, and a `pointer` that names nothing in the result. Optionally, a result with no citations. |
 | `citation-url-policy` | validation | Any URL a reader could follow with a scheme other than `https`, or a private, loopback, or link-local host. |
 | `citation-quote-check` | validation | A quoted `text` that is not in the cited dataset. `failOpen: true`. |
 | `citation-license` | validation | A citation with no `license`, or an attribution license with no `publisher` or `author` to credit. |
@@ -108,7 +113,7 @@ The filter never removes a citation for a license error, because that would also
 
 ## What the demo shows
 
-1. `population`: sound citations in the SEP's three link forms and one block-level citation. Everything passes.
+1. `population`: sound citations in the SEP's three link forms, one block-level citation, and one bound by `pointer` to a figure in `structuredContent`. Everything passes.
 2. `unemployment` in audit mode: two sound citations and four flawed ones (a figure the dataset does not contain, an entry with no `id`, `name`, or `url`, a private staging URL, and a share-alike dataset with nobody to credit). Findings are logged and the result is delivered unchanged.
 3. The same call with the filter promoted to `active`. Three citations are stripped. The share-alike one is delivered flagged.
 4. The same call with three validators also promoted to `active`. The result is blocked with `-32602`.
@@ -151,7 +156,8 @@ The gateway passes the citations on only to a client that declares support, so i
 
 ## Open questions
 
-- How does a citation bind to a value in a typed `result` that has no markdown text? A JSON Pointer into `result` is one candidate.
+- The filter does not remove or reorder parts of a result, so pointers stay valid after it runs. What should a mutator that does reorder them be required to do?
+- A pointer names one value. Should a citation be able to cover several, or a range of an array?
 - In programmatic tool calling, how does the host learn which citations the code's output rests on?
 - Citations could also sit inside `result`, described by its schema, where the model and generated code both see them. Which citation fields belong there and which in `_meta`?
 - Which of these should a revised SEP-3094 fix: the carrier, or only the two roles, text for the model and metadata for the host?

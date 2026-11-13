@@ -16,6 +16,8 @@ import { CITATIONS_EXTENSION, CITATIONS_META_KEY, type Citation } from './types.
 
 interface Answer {
     text: string;
+    /** The figures as data, for a caller that does not read the text. */
+    structured?: unknown;
     citations: Citation[];
 }
 
@@ -76,7 +78,7 @@ const REFUSAL =
 
 const ANSWERS: Record<string, Answer> = {
     // Uses the SEP's three link forms (a bare marker, a marker with link text,
-    // and an inline link keyed by `name`) and a block-level citation.
+    // and an inline link keyed by `name`), a block-level citation, and a pointer.
     population: {
         text: [
             `Ireland's population figures come from [PEA01 - Population Estimates (Persons in April), Central Statistics Office](${PORTAL}/${POPULATION}).`,
@@ -97,8 +99,11 @@ const ANSWERS: Record<string, Answer> = {
                 url: `${PORTAL}/${POPULATION}#:~:text=Population%20Estimates%20(Persons%20in%20April)`,
                 text: row.population2025
             }),
-            cite(POPULATION, { name: 'PEA01 - Population Estimates (Persons in April), Central Statistics Office' })
-        ]
+            cite(POPULATION, { name: 'PEA01 - Population Estimates (Persons in April), Central Statistics Office' }),
+            // Bound by pointer to a figure in `structuredContent`, which has no text to hold a marker.
+            cite(POPULATION, { pointer: '/structuredContent/population/2026', url: `${PORTAL}/${POPULATION}`, text: row.population2026 })
+        ],
+        structured: { unit: 'thousand', population: { '2025': 5458.6, '2026': 5525.6 } }
     },
 
     unemployment: {
@@ -166,6 +171,7 @@ function buildServer(): McpServer {
             if (REQUIRE_RENDER && !declared?.render) return { isError: true, content: [{ type: 'text', text: REFUSAL }] };
             return {
                 content: [{ type: 'text', text: answer.text }],
+                ...(answer.structured !== undefined && { structuredContent: answer.structured }),
                 ...(declared && answer.citations.length > 0 && { _meta: { [CITATIONS_META_KEY]: answer.citations } })
             };
         }
