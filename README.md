@@ -14,47 +14,16 @@ This is independent work and not officially associated with OKFN.
 
 ## Citations in `_meta`
 
-SEP-3094 at 109bbfe proposes a top-level `citations` field on the tool result. The demo treats that shape as open. Its author [raised an alternative](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#issuecomment-6401849044): return the metadata in `_meta` and process it with interceptors. The demo implements that alternative as input to the next draft.
+SEP-3094 puts citations in a new top-level field on the tool result. The demo puts them in the result's `_meta`, which the SEP's author [suggested trying](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#issuecomment-6401849044).
 
-- The portal server returns the citation array in `_meta["io.modelcontextprotocol/citations"]`. The entries are the SEP's citation objects, unchanged.
-- `content` carries what the model needs to cite a source: the `[c1]` markers and their link definitions. The host passes `content` to the model.
-- `_meta` carries what the host needs to draw a citation: the dataset's name, publisher, license, quoted row, and thumbnail. The host keeps it.
-- The interceptors receive the whole result. They check the markers in `content` against the entries in `_meta`, and the filter edits both.
+- The text in `content` has the `[c1]` markers and their links. The model reads this.
+- `_meta["io.modelcontextprotocol/citations"]` has the citation details: name, publisher, license, and quoted row. The host keeps this to draw the citations.
+- The interceptors get the whole result and check one against the other.
+- A citation can also point at a value in the result with `pointer`, a JSON Pointer such as `/structuredContent/population/2026`. Structured data has no text to put a marker in.
 
-The MCP specification does not say whether a host shows `_meta` to the model. It [describes `_meta`](https://modelcontextprotocol.io/specification/draft/basic/index#meta) as a way for clients and servers "to attach additional metadata to their interactions", and leaves the meaning of a key to the extension that defines it. The [MCP Apps extension](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/draft/apps.mdx) lists as a best practice that a tool result's `_meta` holds metadata "not intended for model context". SEP-3094 lets a client that does not render citations "pass them to an LLM as opaque, metadata". The demo's host passes the model `content` only.
+The MCP specification does not say whether a host should show `_meta` to the model. The demo's host does not.
 
-### What the demo keeps from SEP-3094, and what it changes
-
-Kept:
-
-- The citation object: the schema.org subset, `display`, and `mcp:annotations.lastModified`.
-- The binding: CommonMark links in `content`, keyed by `id` or `name`.
-- The `render` flag, and omitting citations for a client that declares no support.
-
-Added:
-
-- `pointer`, a JSON Pointer (RFC 6901) from a citation to the part of the result it supports, such as `/structuredContent/population/2026`. It binds a citation to a value that has no text to hold a marker. The empty pointer is the whole result.
-
-Changed:
-
-- The citations travel in the result's `_meta["io.modelcontextprotocol/citations"]`. A result with them is still a valid `CallToolResult`, so no schema change is needed.
-- The citations are not in a content block's `_meta`. A result need not have text blocks, and the proposed result shape below has no content blocks.
-- Support is declared as an extension, in `extensions["io.modelcontextprotocol/citations"]`. The SDK drops a top-level `citations` capability.
-- The `io.modelcontextprotocol/` prefix is reserved for the specification and official extensions. The demo uses it for a key that no extension defines yet.
-- No `mcp:annotations.audience` on a citation. Few clients act on `audience`, so a server cannot count on it. Where a citation goes is set by where it sits: markers in the text for the model, objects in `_meta` for the host.
-
-The checks depend on two things: text the model reads, with markers in it, and a list of citation objects the host reads. Both are set in `src/types.ts`: `citationsOf`, `withCitations`, and `CITATIONS_PATH` for the list, `textOf` and `mapText` for the text. The mod repeats `CITATIONS_PATH` in `hooks/register.tsx`. The checks themselves do not touch `content`.
-
-### Against the proposed tool result shape
-
-The Core Primitives Working Group has an open proposal, [Unified Typed Tool Results](https://github.com/modelcontextprotocol/core-primitives-wg/pull/3) at a1cb53c, with a [problem statement](https://github.com/modelcontextprotocol/core-primitives-wg/pull/2) at e44f13a. It replaces `content` and `structuredContent` with one `result` value and its `resultSchema`, and keeps `_meta`. The demo does not implement it.
-
-- The proposal moves UI-only data for MCP Apps into `_meta["io.modelcontextprotocol/ui"]`. Citation metadata the host draws, under its own `_meta` key, follows the same pattern. The demo's carrier would not move.
-- A top-level `citations` field would add a field to a result the proposal reduces to `result`, `resultSchema`, `isError`, and `_meta`.
-- The demo reads the answer's text from `content` blocks. Under the proposal that text is `result` when its schema is a string, or the strings in an array of content blocks. `textOf` and `mapText` would change.
-- SEP-3094 binds a citation to a claim with a markdown link in text. A typed `result`, such as an array of rows, has no text to hold a marker. The demo's `pointer` covers that case, and under the proposal it would point into `result`.
-- In a direct call the host puts `result` into model context, so the markers reach the model as they do now. In programmatic tool calling the generated code receives `result` as a value and chooses what to print. The markers reach the model only if the code prints them, and the proposal does not say whether the code sees `_meta`.
-- The proposal removes `annotations.audience` from tool results, and its problem statement says servers cannot rely on the hint for routing. SEP-3094 gives each citation an `mcp:annotations.audience`. The demo drops it.
+[Where the demo differs from the SEPs, and why](docs/sep-divergences.md) gives each difference and its reason. Where the citations and the text sit in a result is set in one file, `src/types.ts`.
 
 ## The data
 
@@ -139,9 +108,8 @@ The gateway passes the citations on only to a client that declares support, so i
 
 ## Where the demo departs from the SEPs
 
-- SEP-2624 does not define the response-phase payload, or say whether it includes `_meta`. The demo passes the whole `tools/call` result.
-- The carrier and the capability differ from SEP-3094 at 109bbfe. See [Citations in `_meta`](#citations-in-_meta).
-- A validation message's `path` reads `_meta["io.modelcontextprotocol/citations"][2].url`. SEP-2624 calls `path` a JSON path and shows only dotted names.
+The main differences and their reasons are in [docs/sep-divergences.md](docs/sep-divergences.md). The smaller ones:
+
 - `PORTAL_REQUIRE_RENDER=1` is not in SEP-3094.
 - `citation-url-policy` and `citation-license` are deployment policies. SEP-3094 restricts only what a client fetches automatically, and does not mention licenses. `license` is a schema.org property outside the SEP's subset, read here as a string.
 - `citation-url-policy` does not resolve DNS names.
@@ -156,20 +124,34 @@ The gateway passes the citations on only to a client that declares support, so i
 
 ## Open questions
 
-- The filter does not remove or reorder parts of a result, so pointers stay valid after it runs. What should a mutator that does reorder them be required to do?
-- A pointer names one value. Should a citation be able to cover several, or a range of an array?
-- In programmatic tool calling, how does the host learn which citations the code's output rests on?
-- Citations could also sit inside `result`, described by its schema, where the model and generated code both see them. Which citation fields belong there and which in `_meta`?
-- Which of these should a revised SEP-3094 fix: the carrier, or only the two roles, text for the model and metadata for the host?
-- The specification does not require a client to declare support before a server sends it a `_meta` key. Should a server still omit the citations for a client that did not declare support?
-- The result's `_meta` also holds protocol keys such as `io.modelcontextprotocol/serverInfo`. Should an interceptor receive them, and may a mutator change them?
-- The model sees the markers and link definitions and none of the citation objects. Is that enough for it to cite well, or does a host need to pass some of `_meta` on?
-- A server that omits the citations for a client without support still returns the text, so attribution-licensed content reaches a client that shows no credit. Should it return less, or refuse?
-- SEP-3094 has no convention for a server declining a client that will not render. Is a tool error the right shape?
-- Should `render` cover a citation whose marker the model dropped from its answer?
-- How should a server mark a citation that must not be removed, or carry share-alike terms?
-- Stripping a failing citation also removes the credit its license requires. Should the auditor or the server decide whether to keep it or block the result?
-- Should a gateway declare its own citation support to the server, or its client's?
+### Showing citations
+
+- The model sees the markers and links but not the citation details. Is that enough for it to cite well, or should the host pass some details on?
+- If the model's answer leaves out a marker, does a client that said it shows citations still have to show that one?
+- Should a server send citations to a client that did not say it supports them? Nothing in the specification stops it.
+
+### Licenses and credit
+
+- A server that leaves out citations for a client without support still sends the text. Licensed data then reaches a client that shows no credit. Should the server send less, or refuse?
+- Is a tool error the right way for a server to refuse a client that will not show citations? SEP-3094 does not define one.
+- Removing a bad citation also removes the credit its license requires. Who decides whether to keep it or block the result: the auditor or the server?
+- How should a server mark a citation that must not be removed, or pass on share-alike terms?
+
+### Interceptors and gateways
+
+- A result's `_meta` also holds protocol data, such as the server's name and version. Should an interceptor see it, and may a mutator change it?
+- If a mutator reorders or removes parts of a result, pointers into it break. Should the mutator have to fix them?
+- Should a gateway tell the server what it supports itself, or what its client supports?
+
+### Structured data and code mode
+
+- A pointer names one value. Should a citation be able to cover several values, or a range?
+- In code mode, generated code decides what the model sees. How does the host know which citations the output depends on?
+- Should some citation fields go in the result data itself, where the model and generated code can read them?
+
+### The next draft
+
+- Should the next draft of SEP-3094 say exactly where citations go, or only that the model gets the text and the host gets the details?
 
 ## Acknowledgements
 

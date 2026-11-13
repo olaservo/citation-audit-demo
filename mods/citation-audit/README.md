@@ -1,6 +1,6 @@
 # citation-audit mod for Claude Code
 
-Makes Claude Code the host in the [citation audit demo](../../README.md). Written against Claude Code 2.1.322.
+Makes Claude Code the host in the [citation audit demo](../../README.md). Written against Claude Code 2.1.322 and rechecked on 2.1.323.
 
 ## Install
 
@@ -32,15 +32,19 @@ Ask for statistics on `unemployment`, `population`, or `inflation`.
 
 ## How it works
 
-Claude Code does not hand a mod the result's `_meta`. A probe server on 2.1.322 returned a marker in each part of a result, with these outcomes:
+A mod cannot read a result's `_meta` and cannot call an interceptor. So for each `statistics` call the mod runs `src/audit-cli.ts`, which calls the tool itself, runs the interceptors, and prints a report. The portal server in `.mcp.json` only lists the tool for the model. Each call starts three Node processes.
 
-| Part of the result | Model | Mod (`tool.call` hook and `$.mcp.call`) | Session record (`tool_use_result` in `stream-json` output) |
+`types/index.d.ts` copies the report types from `src/host.ts`. Keep the two in step.
+
+## What Claude Code passes on
+
+Tested on 2.1.322 and 2.1.323 with a server that put a marker in each part of a result.
+
+| Part of the result | Model | Mod | Session record |
 | --- | --- | --- | --- |
 | `content` text | yes | yes | yes |
 | A content block's own `_meta` | no | yes | yes |
 | Result `_meta` | no | no | yes |
 | Top-level `citations` | no | no | no |
 
-When the result also had `structuredContent`, the model and the mod received its JSON as text in place of the content blocks. A mod also cannot send `interceptor/invoke`. So the mod's `tool.call` hook answers each `statistics` call by running `src/audit-cli.ts`, which calls the tool as a client that declares citations, runs the interceptors, and prints a report. The portal server in `.mcp.json` only lists the tool for the model. Each call starts three Node processes.
-
-`types/index.d.ts` copies the report types from `src/host.ts`, since an installed mod has no access to `src/`. Keep the two in step.
+"Mod" is the `tool.call` hook and `$.mcp.call`. "Session record" is `tool_use_result` in `stream-json` output. If the result has `structuredContent`, the model and the mod get that as text and the content blocks are dropped.
