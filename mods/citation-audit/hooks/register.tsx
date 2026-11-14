@@ -65,6 +65,11 @@ function summary({ Text }: Els, audit: AuditRecord) {
   ]
 }
 
+/** The cells `summary` takes. */
+function summaryWidth(audit: AuditRecord): number {
+  return `${audit.mode} · ${audit.outcome === 'blocked' ? `blocked (${audit.error?.code})` : counts(audit.citations)}`.length
+}
+
 /** The first reason without the URL or quote it ends in, after a count of them. */
 function shortReason(reasons: readonly string[]): string {
   const first = (reasons[0] ?? '')
@@ -86,7 +91,7 @@ function citationRows({ Box, Button, Link, Text }: Els, citations: readonly Cita
     return [
       <Box>
         <Box flexShrink={0}>
-          <Text color="warning">{MARK.flagged} {'uncited'.padEnd(10)}</Text>
+          <Text color="warning">{MARK.flagged} {'uncited'.padEnd(11)}</Text>
         </Box>
         <Text dimColor wrap="truncate-end">the answer names no dataset, so its figures cannot be traced to a source</Text>
       </Box>,
@@ -103,7 +108,7 @@ function citationRows({ Box, Button, Link, Text }: Els, citations: readonly Cita
       <Box>
         <Box flexShrink={0}>
           <Text color={isUnverified(c) ? undefined : COLOR[c.status]}>
-            {isUnverified(c) ? '?' : MARK[c.status]} {word.padEnd(10)}
+            {isUnverified(c) ? '?' : MARK[c.status]} {word.padEnd(11)}
           </Text>
         </Box>
         {open && url && (
@@ -244,10 +249,10 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column">
         {row}
         <Box flexDirection="column" marginLeft={2}>
-          <Box>
+          <Text wrap="truncate-end">
             <Text dimColor>citations · </Text>
             {summary(els, audit)}
-          </Box>
+          </Text>
           {citationRows(els, audit.citations)}
         </Box>
       </Box>
@@ -273,15 +278,18 @@ export const register: Register = (on, options) => {
       </Box>
     )
     // The band may be three rows tall, so the buttons share the first row
-    // where it is wide enough to hold them.
-    const isWide = e.props.bodyColumns >= 80
+    // where it has room for them. The two buttons take 20 cells.
+    const head = `Citations statistics(${last.topic}) · `
+    const isWide = e.props.bodyColumns >= head.length + summaryWidth(last) + 20
 
     return (
       <Box flexDirection="column">
         <Box>
-          <Text bold>Citations </Text>
-          <Text dimColor>statistics({last.topic}) · </Text>
-          {summary(els, last)}
+          <Text wrap="truncate-end">
+            <Text bold>Citations </Text>
+            <Text dimColor>statistics({last.topic}) · </Text>
+            {summary(els, last)}
+          </Text>
           {isWide && buttons}
         </Box>
         {citationRows(els, last.citations, url => openUrl($, url))}
@@ -307,10 +315,10 @@ export const register: Register = (on, options) => {
         {!last && <Text dimColor>No audits yet. Ask for statistics on population, unemployment, or inflation.</Text>}
         {last && (
           <Box flexDirection="column">
-            <Box>
+            <Text wrap="truncate-end">
               <Text bold>statistics({last.topic}) </Text>
               {summary(els, last)}
-            </Box>
+            </Text>
             {citationRows(els, last.citations, url => openUrl($, url))}
             <Text dimColor>{last.findings.length ? 'Findings' : 'No findings.'}</Text>
             {last.findings.map(f => (

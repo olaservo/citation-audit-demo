@@ -1,6 +1,6 @@
 # citation-audit mod for Claude Code
 
-Makes Claude Code the host in the [citation audit demo](../../README.md). Written against Claude Code 2.1.322 and rechecked on 2.1.323.
+Makes Claude Code the host in the [citation audit demo](../../README.md). Written against Claude Code 2.1.322 and rechecked on 2.1.323. The screenshots are from 2.1.325.
 
 ## Install
 
@@ -29,6 +29,18 @@ Ask for statistics on `unemployment`, `population`, or `inflation`.
 - An answer with no citations gets a warning line.
 - `/citation-audit` opens a pane with the findings. `/citation-audit audit`, `strip`, or `block` sets the mode, matching scenarios 2 to 4 in the main README.
 - In `block` mode the model receives the `-32602` error in place of the result.
+
+The `unemployment` answer in `strip` mode:
+
+![The statistics call with its audited citations under it, the model's answer, and the band above the prompt. Two citations passed, three were stripped, and one is flagged.](../../docs/screenshots/strip.png)
+
+The pane:
+
+![The citation audit pane, with the mode buttons, one line per citation, and the findings.](../../docs/screenshots/pane.png)
+
+The same answer in `block` mode:
+
+![The statistics call refused with error -32602 and the reasons, and the band showing the result as blocked.](../../docs/screenshots/block.png)
 
 `npm run test:mod` runs the mod's tests.
 

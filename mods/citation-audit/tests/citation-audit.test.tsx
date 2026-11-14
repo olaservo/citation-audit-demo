@@ -100,7 +100,7 @@ test('the tool row lists the citations and links only a passed one', async ($, o
       props: { tool_use_id: 'call-1', tool: 'mcp__portal__statistics', input: { topic: 'unemployment' }, isRunning: false, isErrored: false, isInterrupted: false },
     })
     expect((await ui.find({ type: 'Text', text: /^citations/ }))?.text).toContain('citations')
-    expect((await ui.find({ type: 'Text', text: /stripped$/ }))?.text).toBe('1 stripped')
+    expect((await ui.find({ type: 'Text', text: /^\d+ stripped$/ }))?.text).toBe('1 stripped')
     expect((await ui.find({ type: 'Link' }))?.props.href).toBe('https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment')
     expect((await ui.find({ type: 'Text', text: /quoted text/ }))?.text).toContain('quoted text does not appear')
     await ui.unmount()
@@ -121,7 +121,7 @@ test('the band above the prompt shows the last audit until it is hidden', async 
   expect((await ui.find({ type: 'Text', text: /statistics\(unemployment\)/ }))?.text).toContain('statistics(unemployment)')
   expect((await ui.find({ type: 'Text', text: /CC BY 4\.0/ }))?.text).toContain('Central Statistics Office')
   expect((await ui.find({ type: 'Link' }))?.props.label).toBeUndefined()
-  expect((await ui.find({ type: 'Text', text: /stripped$/ }))?.text).toBe('1 stripped')
+  expect((await ui.find({ type: 'Text', text: /^\d+ stripped$/ }))?.text).toBe('1 stripped')
   expect((await ui.find({ type: 'Link' }))?.props.href).toBe('https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment')
   await ui.press({ key: 'open-1' })
   expect(runs.at(-1)?.argv.at(-1)).toBe('https://data.gov.ie/dataset/mum01-seasonally-adjusted-monthly-unemployment')
@@ -174,7 +174,7 @@ test('the pane lists the last audit, on every surface', async ($, on) => {
       props: { title: 'Citation audit', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
     })
     expect(await ui.find({ type: 'Text', text: /statistics\(unemployment\)/ })).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: /stripped$/ }))?.text).toBe('1 stripped')
+    expect((await ui.find({ type: 'Text', text: /^\d+ stripped$/ }))?.text).toBe('1 stripped')
     expect((await ui.find({ type: 'Text', text: /^quote-check/ }))?.text).toBe('quote-check ')
     await ui.unmount()
   }

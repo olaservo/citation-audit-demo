@@ -106,6 +106,8 @@ The gateway passes the citations on only to a client that declares support, so i
 
 `mods/citation-audit` makes Claude Code the host and draws the audited citations in the terminal. See [its README](mods/citation-audit/README.md).
 
+![Claude Code in strip mode: the statistics call with its audited citations under it, the model's answer, and the band above the prompt. Two citations passed, three were stripped, and one is flagged.](docs/screenshots/strip.png)
+
 ## Where the demo differs from the SEPs
 
 The main differences and their reasons are in [docs/sep-divergences.md](docs/sep-divergences.md). The smaller ones:
