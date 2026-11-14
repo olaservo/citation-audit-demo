@@ -4,13 +4,15 @@ Makes Claude Code the host in the [citation audit demo](../../README.md). Writte
 
 ## Install
 
-The mod runs the demo's own code, so it needs a clone with `npm install` done. Start Claude Code in the clone so `.mcp.json` adds the portal server, then load the mod:
+The mod runs the demo's own code, so it needs a clone with `npm install` done. Start Claude Code in the clone so `.mcp.json` adds the portal server. To load the mod for one session:
 
 ```
-# for this session only
 claude --plugin-dir mods/citation-audit
+```
 
-# or install it from this repo's marketplace
+Or install it from this repo's marketplace, inside Claude Code:
+
+```
 /plugin marketplace add olaservo/citation-audit-demo
 /plugin install citation-audit@citation-audit-demo
 ```

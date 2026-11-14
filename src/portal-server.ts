@@ -1,11 +1,13 @@
 // A sample MCP server for Ireland's open data portal, data.gov.ie. Its
 // `statistics` tool answers with SEP-3094 citations to the datasets the
 // figures come from. The markers and link definitions are in the text, for
-// the model. The citation objects are in the result's `_meta`, for the host. The catalogue records in corpus/datasets.json and the
-// quoted rows are real, retrieved on 2026-11-11. The `unemployment` topic
-// also returns flawed citations on purpose, so the auditor has something to
-// find. Every flawed citation points at an invented dataset for the invented
-// region of Northmark on data.example.org. The `inflation` topic returns none.
+// the model. The citation objects are in the result's `_meta`, for the host.
+// The catalogue records in corpus/datasets.json and the quoted rows are real,
+// retrieved on 2026-11-11. The `unemployment` topic also returns flawed
+// citations on purpose, so the auditor has something to find. Every flawed
+// citation is invented. It points at a dataset for the invented region of
+// Northmark on data.example.org, at a staging address, or at nothing. The
+// `inflation` topic returns none.
 import { readFileSync } from 'node:fs';
 
 import { CLIENT_CAPABILITIES_META_KEY, McpServer, type ClientCapabilities } from '@modelcontextprotocol/server';

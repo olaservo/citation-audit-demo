@@ -23,7 +23,7 @@ SEP-3094 puts citations in a new top-level field on the tool result. The demo pu
 
 The MCP specification does not say whether a host should show `_meta` to the model. The demo's host does not.
 
-[Where the demo differs from the SEPs, and why](docs/sep-divergences.md) gives each difference and its reason. Where the citations and the text sit in a result is set in one file, `src/types.ts`.
+[docs/sep-divergences.md](docs/sep-divergences.md) gives each difference from the SEPs and its reason. The checks reach the text and the citations only through the helpers in `src/types.ts`.
 
 ## The data
 
@@ -83,14 +83,14 @@ The filter never removes a citation for a license error, because that would also
 ## What the demo shows
 
 1. `population`: sound citations in the SEP's three link forms, one block-level citation, and one bound by `pointer` to a figure in `structuredContent`. Everything passes.
-2. `unemployment` in audit mode: two sound citations and four flawed ones (a figure the dataset does not contain, an entry with no `id`, `name`, or `url`, a private staging URL, and a share-alike dataset with nobody to credit). Findings are logged and the result is delivered unchanged.
+2. `unemployment` in audit mode: two sound citations and four flawed ones (a figure the dataset does not contain, an entry with no `id`, `name`, or `url`, a private staging URL, and a share-alike dataset with nobody to credit). The text also has a `[c3]` marker with no citation, which is a warning. Findings are logged and the result is delivered unchanged.
 3. The same call with the filter promoted to `active`. Three citations are stripped. The share-alike one is delivered flagged.
 4. The same call with three validators also promoted to `active`. The result is blocked with `-32602`.
 5. `inflation`: no citations, delivered with a warning.
 6. A client that declares no citation support gets the text and no citations in `_meta`. With `PORTAL_REQUIRE_RENDER=1` the portal refuses it with a tool error.
 7. That client calls through `src/gateway.ts`, which runs the audit for it. `strip` mode returns the stripped text and `block` mode returns `-32602`.
 
-Each citation ends the audit `passed`, `flagged` (an error, delivered anyway), or `stripped`. Only an `error` finding flags, strips, or blocks. A passed citation that quotes its source is shown as `verified` or, when the auditor has no copy of the source, `unverified`.
+Each citation ends the audit `passed`, `flagged` (an error, not removed), or `stripped`. Only an `error` finding flags, strips, or blocks. A passed citation that quotes its source is shown as `verified` or, when the auditor has no copy of the source, `unverified`.
 
 ## Through a gateway
 
@@ -106,20 +106,19 @@ The gateway passes the citations on only to a client that declares support, so i
 
 `mods/citation-audit` makes Claude Code the host and draws the audited citations in the terminal. See [its README](mods/citation-audit/README.md).
 
-## Where the demo departs from the SEPs
+## Where the demo differs from the SEPs
 
 The main differences and their reasons are in [docs/sep-divergences.md](docs/sep-divergences.md). The smaller ones:
 
-- `PORTAL_REQUIRE_RENDER=1` is not in SEP-3094.
 - `citation-url-policy` and `citation-license` are deployment policies. SEP-3094 restricts only what a client fetches automatically, and does not mention licenses. `license` is a schema.org property outside the SEP's subset, read here as a string.
 - `citation-url-policy` does not resolve DNS names.
 - A timed-out interceptor returns `-32000` on time but is not cancelled, which SEP-2624 requires.
-- A halted mutation returns the original payload in `lastValidPayload`.
+- SEP-2624 shows `lastValidPayload` in its mutation error and does not define it. The demo puts the original payload there, because mutations must be atomic.
 - The result schemas require `interceptor`, `type`, and `phase`, as the SEP-2624 interfaces do. The SEP's example responses omit them.
-- The filter reruns three checks itself, since SEP-2624 gives a mutator no access to validator results. It uses their default severities.
+- The filter's own run of the three checks uses their default severities.
 - `mcp:annotations.lastModified` carries CKAN's date for the data's last update, with no time. The SEP's JSON-LD context types it `xsd:dateTime`.
 - `@context` is ignored. Every citation is read in the default MCP format.
-- Mutator ordering, `failOpen`, timeouts, and hook narrowing are implemented in `src/invoker.ts` but not exercised.
+- Mutator ordering, `failOpen`, and hook narrowing in `src/invoker.ts`, and the timeout in `src/interceptor-server.ts`, are implemented but never triggered by the demo.
 - `src/markdown-links.ts` is a small scanner, not a CommonMark parser.
 
 ## Open questions
@@ -128,7 +127,7 @@ The main differences and their reasons are in [docs/sep-divergences.md](docs/sep
 
 - The model sees the markers and links but not the citation details. Is that enough for it to cite well, or should the host pass some details on?
 - If the model's answer leaves out a marker, does a client that said it shows citations still have to show that one?
-- Should a server send citations to a client that did not say it supports them? Nothing in the specification stops it.
+- Should a server send citations to a client that did not say it supports them? SEP-3094 says it should omit them. Nothing in the MCP specification stops a server putting them in `_meta`.
 
 ### Licenses and credit
 
@@ -149,9 +148,9 @@ The main differences and their reasons are in [docs/sep-divergences.md](docs/sep
 - In code mode, generated code decides what the model sees. How does the host know which citations the output depends on?
 - Should some citation fields go in the result data itself, where the model and generated code can read them?
 
-### The next draft
+### The next iteration
 
-- Should the next draft of SEP-3094 say exactly where citations go, or only that the model gets the text and the host gets the details?
+- Should the next iteration of SEP-3094 say exactly where citations go, or only that the model gets the text and the host gets the details?
 
 ## Acknowledgements
 

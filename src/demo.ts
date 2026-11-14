@@ -78,7 +78,8 @@ for (const interceptor of host.interceptors) {
 async function run(title: string, topic: string, overrides: Record<string, InterceptorOverrides> = {}): Promise<void> {
     console.log(`\n=== ${title} ===`);
     const audit = await callAndAudit(host, 'statistics', { topic }, overrides);
-    console.log(`tools/call statistics(${topic}) returned ${citationList(audit.result).length} citations in ${CITATIONS_PATH}`);
+    const sent = citationsOf(audit.result) === undefined ? 'no citations' : `${citationList(audit.result).length} citations`;
+    console.log(`tools/call statistics(${topic}) returned ${sent} in ${CITATIONS_PATH}`);
 
     console.log('validate:');
     printValidation(audit.validation);
@@ -91,7 +92,8 @@ async function run(title: string, topic: string, overrides: Record<string, Inter
         return;
     }
 
-    const kept = citationList(audit.delivered).map(citation => citation.id ?? citation.name ?? '(no key)');
+    // Names are quoted because they contain commas.
+    const kept = citationList(audit.delivered).map(citation => citation.id ?? (citation.name ? `"${citation.name}"` : '(no key)'));
     console.log(`DELIVERED with ${kept.length} citations${kept.length > 0 ? ` (${kept.join(', ')})` : ''}.`);
     if (audit.mutation?.outcomes.some(outcome => outcome.applied)) {
         console.log(audit.delivered.content?.map(block => block.text?.trimEnd()).join('\n').replace(/^/gm, '    | '));
