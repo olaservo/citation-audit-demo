@@ -82,7 +82,7 @@ test('a failed audit refuses the call', async ($, on) => {
 test('other tools are left alone', async ($, on) => {
   const runs = session(on, STRIPPED)
   on('tool.call', () => ({ result: 'untouched' }))
-  const ran = await $.tool.call({ tool: 'mcp__other__lookup', q: 'x' })
+  const ran = await $.tool.call({ tool: 'Read', file_path: 'a.md' })
   expect(ran.result).toBe('untouched')
   expect(runs.length).toBe(0)
 })
