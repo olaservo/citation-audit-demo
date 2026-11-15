@@ -1,6 +1,6 @@
 # citation-audit mod for Claude Code
 
-Makes Claude Code the host in the [citation audit demo](../../README.md). Written against Claude Code 2.1.322 and rechecked on 2.1.323. The screenshots are from 2.1.325.
+Makes Claude Code the host in the [citation audit demo](../../README.md). Written against Claude Code 2.1.322 and rechecked on 2.1.323 and 2.1.325. The screenshots are from 2.1.325.
 
 ## Install
 
@@ -52,7 +52,7 @@ A mod cannot read a result's `_meta` and cannot call an interceptor. So for each
 
 ## What Claude Code passes on
 
-Tested on 2.1.322 and 2.1.323 with a server that put a marker in each part of a result.
+Tested on 2.1.322, 2.1.323, and 2.1.325 with a server that puts a marker in each part of a result. `npm run probe` reruns the test with the server in [`probe/`](../../probe). On 2.1.325 the outcome was the same over protocol 2025-06-18 and 2026-07-28.
 
 | Part of the result | Model | Mod | Session record |
 | --- | --- | --- | --- |

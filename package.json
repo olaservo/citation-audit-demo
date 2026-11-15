@@ -12,6 +12,7 @@
     "demo": "tsx src/demo.ts",
     "test": "tsx --test test/*.test.ts",
     "test:mod": "claude plugin test mods/citation-audit",
+    "probe": "tsx probe/run.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

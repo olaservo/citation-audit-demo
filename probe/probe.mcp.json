@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "probe": {
+      "command": "node",
+      "args": ["--import", "tsx", "probe/server.ts"]
+    }
+  }
+}

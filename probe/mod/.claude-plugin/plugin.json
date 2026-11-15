@@ -1,0 +1,5 @@
+{
+  "name": "probe-mod",
+  "version": "0.1.0",
+  "description": "Records what a tool.call hook and $.mcp.call receive from the probe server"
+}

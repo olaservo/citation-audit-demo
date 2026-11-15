@@ -25,4 +25,4 @@ The demo follows SEP-3094 (citations) at 109bbfe and SEP-2624 (interceptors) at 
 
 The MCP specification does not say. MCP Apps describes `_meta` as "not intended for model context", and SEP-3094 allows a client to pass citations to the model. The demo's host does not pass them.
 
-Claude Code 2.1.322 and 2.1.323 keep a result's `_meta` in the session record and do not show it to the model. An unknown top-level field is dropped. Details are in the [mod README](../mods/citation-audit/README.md).
+Claude Code 2.1.322, 2.1.323, and 2.1.325 keep a result's `_meta` in the session record and do not show it to the model. An unknown top-level field is dropped. Details are in the [mod README](../mods/citation-audit/README.md).
