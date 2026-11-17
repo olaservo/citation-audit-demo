@@ -6,10 +6,10 @@ The demo follows SEP-3094 (citations) at 109bbfe and SEP-2624 (interceptors) at 
 
 | The SEP | The demo | Why |
 | --- | --- | --- |
-| Citations are a new top-level field on the tool result. | Citations go in the result's `_meta`. | `_meta` works today with no schema change. It also survives the [proposed new result shape](https://github.com/modelcontextprotocol/core-primitives-wg/pull/3). The SEP's author [suggested trying it](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#issuecomment-6401849044). |
+| Citations are a new top-level field on the tool result. | Citations go in the result's `_meta`. | `_meta` works today with no schema change. It also survives the [proposed new result shape](https://github.com/modelcontextprotocol/core-primitives-wg/pull/3). The SEP's author [raised it as an option](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#issuecomment-6401849044). |
 | (Not covered.) | Citations are not attached to individual content blocks. | The proposed result shape replaces `content` and `structuredContent` with one `result` value. |
 | Clients declare support with a top-level `citations` capability. | Clients declare an extension. | The SDK drops capabilities it does not know, and the maintainers want citations to be an extension. |
-| Each citation can say whether it is for the user or the model (`audience`). | No `audience`. | Few clients act on it, and it will potentially be deprecated in the next protocol version. The demo decides by placement: markers in the text are for the model, citation details in `_meta` are for the host. |
+| Each citation can say whether it is for the user or the model (`audience`). | No `audience`. | Few clients act on it, and the proposed result shape removes it from tool results. The demo decides by placement: markers in the text are for the model, citation details in `_meta` are for the host. |
 | A citation is tied to a claim by a markdown link in the text. | Also allows `pointer`, a JSON Pointer to a value in the result. | Structured data has no text to put a link in. |
 | No license field. | Reads `license`, and the portal can refuse a client that won't show citations. | Open data licenses often require credit. This was the use case the Open Knowledge Foundation raised. |
 
@@ -23,6 +23,6 @@ The demo follows SEP-3094 (citations) at 109bbfe and SEP-2624 (interceptors) at 
 
 ## Does the model see `_meta`?
 
-The MCP specification does not say. MCP Apps describes `_meta` as "not intended for model context", and SEP-3094 allows a client to pass citations to the model. The demo's host does not pass them.
+The MCP specification does not say. The [MCP Apps specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx) describes a tool result's `_meta` as "not intended for model context", and SEP-3094 allows a client to pass citations to the model. The demo's host does not pass them.
 
 Claude Code 2.1.322, 2.1.323, and 2.1.325 keep a result's `_meta` in the session record and do not show it to the model. An unknown top-level field is dropped. Details are in the [mod README](../mods/citation-audit/README.md).

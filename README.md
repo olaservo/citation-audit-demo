@@ -14,7 +14,7 @@ This is independent work and not officially associated with OKFN.
 
 ## Citations in `_meta`
 
-SEP-3094 puts citations in a new top-level field on the tool result. The demo puts them in the result's `_meta`, which the SEP's author [suggested trying](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#issuecomment-6401849044).
+SEP-3094 puts citations in a new top-level field on the tool result. The demo puts them in the result's `_meta`, an option the SEP's author [raised](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3094#issuecomment-6401849044).
 
 - The text in `content` has the `[c1]` markers and their links. The model reads this.
 - `_meta["io.modelcontextprotocol/citations"]` has the citation details: name, publisher, license, and quoted row. The host keeps this to draw the citations.
@@ -114,9 +114,10 @@ The main differences and their reasons are in [docs/sep-divergences.md](docs/sep
 
 - `citation-url-policy` and `citation-license` are deployment policies. SEP-3094 restricts only what a client fetches automatically, and does not mention licenses. `license` is a schema.org property outside the SEP's subset, read here as a string.
 - `citation-url-policy` does not resolve DNS names.
-- A timed-out interceptor returns `-32000` on time but is not cancelled, which SEP-2624 requires.
+- A timed-out interceptor returns `-32000` on time, but its check keeps running. SEP-2624 requires cancelling it.
 - SEP-2624 shows `lastValidPayload` in its mutation error and does not define it. The demo puts the original payload there, because mutations must be atomic.
 - The result schemas require `interceptor`, `type`, and `phase`, as the SEP-2624 interfaces do. The SEP's example responses omit them.
+- The demo does not read an interceptor's `compat`, or a validation result's `suggestions` or `signature`.
 - The filter's own run of the three checks uses their default severities.
 - `mcp:annotations.lastModified` carries CKAN's date for the data's last update, with no time. The SEP's JSON-LD context types it `xsd:dateTime`.
 - `@context` is ignored. Every citation is read in the default MCP format.
