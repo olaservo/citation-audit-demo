@@ -10,10 +10,11 @@
 // `inflation` topic returns none.
 import { readFileSync } from 'node:fs';
 
-import { CLIENT_CAPABILITIES_META_KEY, McpServer, type ClientCapabilities } from '@modelcontextprotocol/server';
+import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 
+import { citationsCapability } from './client-capabilities.ts';
 import { CITATIONS_EXTENSION, CITATIONS_META_KEY, type Citation } from './types.ts';
 
 interface Answer {
@@ -166,10 +167,7 @@ function buildServer(): McpServer {
         },
         ({ topic }, ctx) => {
             const answer = ANSWERS[topic]!;
-            // Capabilities arrive per request on 2026-07-28 and from `initialize` before that.
-            const envelope = ctx.mcpReq.envelope as Record<string, ClientCapabilities | undefined> | undefined;
-            const capabilities = envelope?.[CLIENT_CAPABILITIES_META_KEY] ?? mcp.server.getClientCapabilities();
-            const declared = capabilities?.extensions?.[CITATIONS_EXTENSION] as { render?: unknown } | undefined;
+            const declared = citationsCapability(mcp, ctx);
             if (REQUIRE_RENDER && !declared?.render) return { isError: true, content: [{ type: 'text', text: REFUSAL }] };
             return {
                 content: [{ type: 'text', text: answer.text }],

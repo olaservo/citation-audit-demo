@@ -9,7 +9,19 @@ import { McpServer, ProtocolError } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 
-import { checkBinding, checkLicense, checkQuotes, checkUrlPolicy, stripBadCitations, type CheckOutput, type SourceLookup } from './citation-checks.ts';
+import {
+    BindingConfigSchema,
+    checkBinding,
+    checkLicense,
+    checkQuotes,
+    checkUrlPolicy,
+    LicenseConfigSchema,
+    QuoteCheckConfigSchema,
+    stripBadCitations,
+    UrlPolicyConfigSchema,
+    type CheckOutput,
+    type SourceLookup
+} from './citation-checks.ts';
 import {
     hookMatches,
     INTERCEPTORS_EXTENSION,
@@ -42,20 +54,28 @@ type Config = Record<string, unknown>;
 type Check = (result: CitedToolResult, config: Config) => CheckOutput | Promise<CheckOutput>;
 type Mutate = (result: CitedToolResult, config: Config) => Promise<Pick<MutationResult, 'modified' | 'payload' | 'info'>>;
 
-const ALLOWED_SCHEMES = { type: 'array', items: { type: 'string' }, default: ['https'] };
-
 // SEP-2624: configuration and payloads MUST be validated before processing.
-// Each `config` enforces the `configSchema` its descriptor advertises.
-const BindingConfig = z.strictObject({ uncitedSeverity: z.enum(['info', 'warn', 'error']).optional() });
-const SchemesConfig = z.strictObject({ allowedSchemes: z.array(z.string()).optional() });
-const QuoteConfig = z.strictObject({ unverifiedSeverity: z.enum(['info', 'warn', 'error']).optional() });
-const LicenseConfig = z.strictObject({ missingSeverity: z.enum(['info', 'warn', 'error']).optional() });
 const PayloadSchema = z.looseObject({
     content: z.array(z.looseObject({ type: z.string() })).optional(),
     _meta: z.record(z.string(), z.unknown()).optional()
 });
 
-const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; check?: Check; mutate?: Mutate }> = [
+/** An interceptor this server hosts. `config` validates the config an invoker sends. */
+interface Hosted {
+    descriptor: Omit<Interceptor, 'configSchema'>;
+    config: z.ZodType<Config>;
+    check?: Check;
+    mutate?: Mutate;
+}
+
+/** The descriptor as advertised, with a `configSchema` generated from `config`. */
+function descriptorOf({ descriptor, config }: Hosted): Interceptor {
+    // `io: 'input'` describes what an invoker sends, where a field with a default is optional.
+    const { $schema: _draft, ...configSchema } = z.toJSONSchema(config, { io: 'input' });
+    return { ...descriptor, configSchema: configSchema as Interceptor['configSchema'] };
+}
+
+const INTERCEPTORS: Hosted[] = [
     {
         descriptor: {
             name: 'citation-binding',
@@ -63,15 +83,10 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
             description: 'Checks that the citations in a tool result\'s `_meta` line up with markers in its text or with the values their pointers name',
             type: 'validation',
             hooks: HOOKS,
-            mode: 'audit',
-            configSchema: {
-                type: 'object',
-                properties: { uncitedSeverity: { type: 'string', enum: ['info', 'warn', 'error'] } },
-                additionalProperties: false
-            }
+            mode: 'audit'
         },
-        config: BindingConfig,
-        check: (result, config) => checkBinding(result, config)
+        config: BindingConfigSchema,
+        check: checkBinding
     },
     {
         descriptor: {
@@ -80,11 +95,10 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
             description: 'Rejects citation URLs outside the scheme allow-list or pointing at private, loopback, or link-local addresses',
             type: 'validation',
             hooks: HOOKS,
-            mode: 'audit',
-            configSchema: { type: 'object', properties: { allowedSchemes: ALLOWED_SCHEMES }, additionalProperties: false }
+            mode: 'audit'
         },
-        config: SchemesConfig,
-        check: (result, config) => checkUrlPolicy(result, config)
+        config: UrlPolicyConfigSchema,
+        check: checkUrlPolicy
     },
     {
         descriptor: {
@@ -95,14 +109,9 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
             hooks: HOOKS,
             mode: 'audit',
             // The corpus lookup can fail. An unreadable corpus should not block tool results.
-            failOpen: true,
-            configSchema: {
-                type: 'object',
-                properties: { unverifiedSeverity: { type: 'string', enum: ['info', 'warn', 'error'], default: 'info' } },
-                additionalProperties: false
-            }
+            failOpen: true
         },
-        config: QuoteConfig,
+        config: QuoteCheckConfigSchema,
         check: (result, config) => checkQuotes(result, lookupSource, config)
     },
     {
@@ -112,15 +121,10 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
             description: 'Checks that each citation carries a `license`, and names a publisher or author when the license requires attribution',
             type: 'validation',
             hooks: HOOKS,
-            mode: 'audit',
-            configSchema: {
-                type: 'object',
-                properties: { missingSeverity: { type: 'string', enum: ['info', 'warn', 'error'], default: 'error' } },
-                additionalProperties: false
-            }
+            mode: 'audit'
         },
-        config: LicenseConfig,
-        check: (result, config) => checkLicense(result, config)
+        config: LicenseConfigSchema,
+        check: checkLicense
     },
     {
         descriptor: {
@@ -132,10 +136,10 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
             hooks: HOOKS,
             mode: 'audit',
             // In the recommended range for security sanitization.
-            priorityHint: -10000,
-            configSchema: { type: 'object', properties: { allowedSchemes: ALLOWED_SCHEMES }, additionalProperties: false }
+            priorityHint: -10000
         },
-        config: SchemesConfig,
+        // The filter runs the URL policy check, so it takes that check's config.
+        config: UrlPolicyConfigSchema,
         mutate: async (result, config) => {
             const { result: payload, stripped } = await stripBadCitations(result, lookupSource, config);
             return { modified: stripped.length > 0, payload, info: { stripped } };
@@ -145,6 +149,29 @@ const INTERCEPTORS: Array<{ descriptor: Interceptor; config: z.ZodType<Config>; 
 
 const SEVERITY_RANK: Record<Severity, number> = { info: 0, warn: 1, error: 2 };
 
+/**
+ * Runs one interceptor and turns what it throws into the SEP's errors. With
+ * `timeoutMs` the race answers on time, but the run is not cancelled.
+ * SEP-2624 requires cancelling it.
+ */
+async function withDeadline<T>({ name, phase, timeoutMs }: z.infer<typeof InvokeParamsSchema>, run: () => T | Promise<T>): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+        const running = Promise.resolve().then(run);
+        if (timeoutMs === undefined) return await running;
+        const expired = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new ProtocolError(-32000, 'Interceptor execution timeout', { interceptor: name, timeoutMs, phase })), timeoutMs);
+        });
+        return await Promise.race([running, expired]);
+    } catch (error) {
+        if (error instanceof ProtocolError) throw error;
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new ProtocolError(-32603, 'Interceptor execution failed', { interceptor: name, reason });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 function buildServer(): McpServer {
     const mcp = new McpServer({ name: 'citation-interceptors', version: '0.1.0' });
     mcp.server.registerCapabilities({ extensions: { [INTERCEPTORS_EXTENSION]: { supportedEvents: ['tools/call'] } } });
@@ -153,7 +180,7 @@ function buildServer(): McpServer {
         'interceptors/list',
         { params: ListInterceptorsParamsSchema, result: ListInterceptorsResultSchema },
         params => ({
-            interceptors: INTERCEPTORS.map(entry => entry.descriptor).filter(
+            interceptors: INTERCEPTORS.map(descriptorOf).filter(
                 descriptor => !params?.event || HOOK_PHASES.some(phase => hookMatches(descriptor.hooks, params.event!, phase))
             )
         })
@@ -187,36 +214,14 @@ function buildServer(): McpServer {
             const started = performance.now();
             const payload = parsedPayload.data as CitedToolResult;
             const config = parsedConfig.data;
-            const { timeoutMs } = params;
-            // The race answers on time. It does not cancel the check, which the SEP requires.
-            const deadline = async <T>(run: () => T | Promise<T>): Promise<T> => {
-                let timer: NodeJS.Timeout | undefined;
-                try {
-                    const running = Promise.resolve().then(run);
-                    if (timeoutMs === undefined) return await running;
-                    const expired = new Promise<never>((_, reject) => {
-                        timer = setTimeout(
-                            () => reject(new ProtocolError(-32000, 'Interceptor execution timeout', { interceptor: params.name, timeoutMs, phase: params.phase })),
-                            timeoutMs
-                        );
-                    });
-                    return await Promise.race([running, expired]);
-                } catch (error) {
-                    if (error instanceof ProtocolError) throw error;
-                    const reason = error instanceof Error ? error.message : String(error);
-                    throw new ProtocolError(-32603, 'Interceptor execution failed', { interceptor: params.name, reason });
-                } finally {
-                    clearTimeout(timer);
-                }
-            };
             const common = { interceptor: params.name, phase: params.phase };
 
             if (entry.mutate) {
-                const mutation = await deadline(() => entry.mutate!(payload, config));
+                const mutation = await withDeadline(params, () => entry.mutate!(payload, config));
                 return { ...common, type: 'mutation', durationMs: Math.round(performance.now() - started), ...mutation };
             }
 
-            const { messages, info } = await deadline(() => entry.check!(payload, config));
+            const { messages, info } = await withDeadline(params, () => entry.check!(payload, config));
             const worst = messages.reduce<Severity | undefined>(
                 (top, message) => (top === undefined || SEVERITY_RANK[message.severity] > SEVERITY_RANK[top] ? message.severity : top),
                 undefined

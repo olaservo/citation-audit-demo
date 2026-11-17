@@ -78,7 +78,7 @@ export interface InterceptorOverrides {
 }
 
 const PhaseSchema = z.enum(['request', 'response']);
-const SeveritySchema = z.enum(['info', 'warn', 'error']);
+export const SeveritySchema = z.enum(['info', 'warn', 'error']);
 
 export const ListInterceptorsParamsSchema = z.object({ event: z.string().optional() }).optional();
 

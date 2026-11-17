@@ -1,10 +1,14 @@
 // The four citation checks and the filter. Each check takes a tools/call
 // result and returns SEP-2624 validation messages. They are pure so the tests
-// can call them without an MCP connection.
+// can call them without an MCP connection. Each check's config is a zod
+// schema. The config's type and the `configSchema` the Interceptor Server
+// advertises both come from it.
 import { isIP } from 'node:net';
 
+import { z } from 'zod';
+
 import { normalizeLabel, parseLinks, unlink, type ParsedLinks } from './markdown-links.ts';
-import { CITATIONS_PATH, citationsOf, mapText, textOf, withCitations, type Citation, type CitedToolResult, type Severity, type ValidationMessage } from './types.ts';
+import { CITATIONS_PATH, citationsOf, mapText, SeveritySchema, textOf, withCitations, type Citation, type CitedToolResult, type ValidationMessage } from './types.ts';
 
 export interface CheckOutput {
     messages: ValidationMessage[];
@@ -71,12 +75,12 @@ function withoutFragment(url: string): string {
 }
 
 /** The labels and names that bind these citations to links in the text. */
-function boundKeys(citations: ReadonlyArray<Citation | null>): { labels: Set<string>; names: Set<string> } {
+function boundKeys(citations: ReadonlyArray<{ id?: string; name?: string }>): { labels: Set<string>; names: Set<string> } {
     const labels = new Set<string>();
     const names = new Set<string>();
     for (const citation of citations) {
-        if (citation?.id) labels.add(normalizeLabel(citation.id));
-        else if (citation?.name) names.add(citation.name);
+        if (citation.id) labels.add(normalizeLabel(citation.id));
+        else if (citation.name) names.add(citation.name);
     }
     return { labels, names };
 }
@@ -157,17 +161,19 @@ function shape(label: string): string {
     return label.replace(/\d+/g, 'N');
 }
 
-export interface BindingConfig {
-    /** Severity for a result with no citations at all. Default: not reported. */
-    uncitedSeverity?: Severity;
-}
+export const BindingConfigSchema = z.strictObject({
+    /** Severity for a result with no citations at all. Not reported when omitted. */
+    uncitedSeverity: SeveritySchema.optional()
+});
+export type BindingConfig = z.input<typeof BindingConfigSchema>;
 
 /** Checks that the citations in `_meta` line up with markers in the text, or with the values their pointers name. */
 export function checkBinding(result: CitedToolResult, config: BindingConfig = {}): CheckOutput {
+    const { uncitedSeverity } = BindingConfigSchema.parse(config);
     const { links, citations, messages } = parse(result);
     const raw = citationsOf(result);
-    if (config.uncitedSeverity && (raw === undefined || (Array.isArray(raw) && raw.length === 0))) {
-        messages.push({ path: CITATIONS_PATH, message: 'result carries no citations, so its claims cannot be traced to a source', severity: config.uncitedSeverity });
+    if (uncitedSeverity && (raw === undefined || (Array.isArray(raw) && raw.length === 0))) {
+        messages.push({ path: CITATIONS_PATH, message: 'result carries no citations, so its claims cannot be traced to a source', severity: uncitedSeverity });
     }
     const ids = new Map<string, number>();
     let markerKeyed = 0;
@@ -245,10 +251,11 @@ export function checkBinding(result: CitedToolResult, config: BindingConfig = {}
     return { messages, info: { citations: citations.length, markerKeyed, nameKeyed, pointerKeyed, blockLevel } };
 }
 
-export interface UrlPolicyConfig {
-    /** Schemes a client may dereference. Default: https only. */
-    allowedSchemes?: string[];
-}
+export const UrlPolicyConfigSchema = z.strictObject({
+    /** Schemes a client may dereference. */
+    allowedSchemes: z.array(z.string()).default(['https'])
+});
+export type UrlPolicyConfig = z.input<typeof UrlPolicyConfigSchema>;
 
 function isPrivateHost(hostname: string): boolean {
     const host = hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
@@ -288,7 +295,7 @@ function isPrivateHost(hostname: string): boolean {
 export function checkUrlPolicy(result: CitedToolResult, config: UrlPolicyConfig = {}): CheckOutput {
     const { links, citations } = parse(result);
     const messages: ValidationMessage[] = [];
-    const allowed = (config.allowedSchemes ?? ['https']).map(scheme => scheme.toLowerCase());
+    const allowed = UrlPolicyConfigSchema.parse(config).allowedSchemes.map(scheme => scheme.toLowerCase());
     let checked = 0;
 
     const check = (path: string, value: string | undefined) => {
@@ -327,10 +334,11 @@ export function checkUrlPolicy(result: CitedToolResult, config: UrlPolicyConfig 
     return { messages, info: { urlsChecked: checked } };
 }
 
-export interface QuoteCheckConfig {
-    /** Severity for a quote whose source is not in the corpus. Default: info. */
-    unverifiedSeverity?: Severity;
-}
+export const QuoteCheckConfigSchema = z.strictObject({
+    /** Severity for a quote whose source is not in the corpus. */
+    unverifiedSeverity: SeveritySchema.default('info')
+});
+export type QuoteCheckConfig = z.input<typeof QuoteCheckConfigSchema>;
 
 function normalizeQuote(text: string): string {
     return text
@@ -348,6 +356,7 @@ export type SourceLookup = (url: string) => Promise<string | undefined>;
 
 /** Checks that each citation's quoted `text` appears in the cited source. */
 export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup, config: QuoteCheckConfig = {}): Promise<CheckOutput> {
+    const { unverifiedSeverity } = QuoteCheckConfigSchema.parse(config);
     const { links, citations } = parse(result);
     const messages: ValidationMessage[] = [];
     const counts = { verified: 0, notFound: 0, unverified: 0 };
@@ -365,7 +374,7 @@ export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup,
             messages.push({
                 path,
                 message: `quote not verified: ${url ? `no snapshot of ${withoutFragment(url)}` : 'citation has no destination'}`,
-                severity: config.unverifiedSeverity ?? 'info'
+                severity: unverifiedSeverity
             });
         } else if (normalizeQuote(source).includes(normalizeQuote(citation.text))) {
             counts.verified++;
@@ -379,10 +388,11 @@ export async function checkQuotes(result: CitedToolResult, lookup: SourceLookup,
     return { messages, info: { ...counts, quotes } };
 }
 
-export interface LicenseConfig {
-    /** Severity for a citation with no `license`. Default: error. */
-    missingSeverity?: Severity;
-}
+export const LicenseConfigSchema = z.strictObject({
+    /** Severity for a citation with no `license`. */
+    missingSeverity: SeveritySchema.default('error')
+});
+export type LicenseConfig = z.input<typeof LicenseConfigSchema>;
 
 // Creative Commons and Open Data Commons licenses whose terms require credit.
 const REQUIRES_ATTRIBUTION = /creativecommons\.org\/licenses\/by|opendatacommons\.org\/licenses\/(by|odbl)|\bCC[ -]BY\b|\bODbL\b|\bODC-BY\b/i;
@@ -392,6 +402,7 @@ const REQUIRES_ATTRIBUTION = /creativecommons\.org\/licenses\/by|opendatacommons
  * and names someone to credit when those terms require attribution.
  */
 export function checkLicense(result: CitedToolResult, config: LicenseConfig = {}): CheckOutput {
+    const { missingSeverity } = LicenseConfigSchema.parse(config);
     const { citations } = parse(result);
     const messages: ValidationMessage[] = [];
     const counts = { licensed: 0, unlicensed: 0, uncredited: 0 };
@@ -405,7 +416,7 @@ export function checkLicense(result: CitedToolResult, config: LicenseConfig = {}
             messages.push({
                 path: `${path}.license`,
                 message: 'citation has no `license`, so the terms of reuse are unknown',
-                severity: config.missingSeverity ?? 'error'
+                severity: missingSeverity
             });
         } else if (REQUIRES_ATTRIBUTION.test(citation.license) && !partyName(citation.publisher) && !partyName(citation.author)) {
             counts.uncredited++;
@@ -459,14 +470,14 @@ export async function stripBadCitations(result: CitedToolResult, lookup: SourceL
     // Errors about links in the text that no citation is bound to strip nothing.
     if (reasons.size === 0) return { result, stripped: [] };
 
-    const entries = raw as Array<Citation | null>;
+    const entries: unknown[] = raw;
     const kept = entries.filter((_, index) => !reasons.has(index));
     const stripped = [...reasons]
         .sort(([a], [b]) => a - b)
         .map(([index, why]) => ({ index, ...keysOf(entries[index]), reasons: why }));
 
     // Leave a marker alone when a kept citation still uses it (a stripped duplicate id).
-    const keptKeys = boundKeys(kept);
+    const keptKeys = boundKeys(kept.map(keysOf));
     const strippedKeys = boundKeys(stripped);
     const labels = new Set([...strippedKeys.labels].filter(label => !keptKeys.labels.has(label)));
     const names = new Set([...strippedKeys.names].filter(name => !keptKeys.names.has(name)));
