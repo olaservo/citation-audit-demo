@@ -30,6 +30,8 @@ const UNCITED: AuditReport = {
   findings: [{ interceptor: 'citation-binding', severity: 'warn', path: '_meta["io.modelcontextprotocol/citations"]', message: 'result carries no citations, so its claims cannot be traced to a source' }],
 }
 
+const ABOVE_PROMPT = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 20, bodyColumns: 80, scroll: { offset: 0, bodyRows: 20 }, view: {} }
+
 /** The engine stamps a run's origin and presentation; a test names the rest. */
 const command = (args: string) => ({ command: 'citation-audit', args }) as CommandRunInput
 
@@ -109,8 +111,7 @@ test('the tool row lists the citations and links only a passed one', async ($, o
 
 test('the band above the prompt shows the last audit until it is hidden', async ($, on) => {
   const runs = session(on, STRIPPED)
-  const props = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 20, bodyColumns: 80, scroll: { offset: 0, bodyRows: 20 }, view: {} }
-  const mount = () => $.ui.mount({ plugin: 'citation-audit', component: 'AbovePrompt', surface: 'terminal', props })
+  const mount = () => $.ui.mount({ plugin: 'citation-audit', component: 'AbovePrompt', surface: 'terminal', props: ABOVE_PROMPT })
 
   let ui = await mount()
   expect(await ui.find({ type: 'Text', text: /statistics\(unemployment\)/ })).toBeUndefined()
@@ -140,8 +141,7 @@ test('an answer with no citations is delivered with a warning', async ($, on) =>
   expect(ran.context?.[0]).toContain('no citations')
   expect(ran.context?.[0]).toContain('- warn: result carries no citations')
 
-  const props = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 20, bodyColumns: 80, scroll: { offset: 0, bodyRows: 20 }, view: {} }
-  const ui = await $.ui.mount({ plugin: 'citation-audit', component: 'AbovePrompt', surface: 'terminal', props })
+  const ui = await $.ui.mount({ plugin: 'citation-audit', component: 'AbovePrompt', surface: 'terminal', props: ABOVE_PROMPT })
   expect((await ui.find({ type: 'Text', text: /^no citations$/ }))?.text).toBe('no citations')
   expect((await ui.find({ type: 'Text', text: /names no dataset/ }))?.text).toContain('cannot be traced')
   await ui.unmount()
@@ -154,8 +154,7 @@ test('a quote with no copy of its source to check reads as unverified', async ($
   expect(ran.context?.[0]).toContain('2 passed (1 unverified)')
   expect(ran.context?.[0]).toContain('quote unverified')
 
-  const props = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 20, bodyColumns: 80, scroll: { offset: 0, bodyRows: 20 }, view: {} }
-  const ui = await $.ui.mount({ plugin: 'citation-audit', component: 'AbovePrompt', surface: 'terminal', props })
+  const ui = await $.ui.mount({ plugin: 'citation-audit', component: 'AbovePrompt', surface: 'terminal', props: ABOVE_PROMPT })
   expect((await ui.find({ type: 'Text', text: /^\? unverified/ }))?.text).toContain('unverified')
   expect((await ui.find({ type: 'Button', key: 'open-1' }))).toBeDefined()
   await ui.unmount()

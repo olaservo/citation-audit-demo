@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
-import { citationIndex, listCitations, type QuoteOutcome } from './citation-checks.ts';
+import { citationIndex, listCitations, type QuoteOutcome, type Stripped } from './citation-checks.ts';
 import {
     discover,
     messagesOf,
@@ -165,7 +165,7 @@ function licenseLabel(license: string): string {
 export function report(audit: Audit, mode: AuditMode): AuditReport {
     const findings: Finding[] = audit.validation.outcomes.flatMap(messagesOf);
     const applied = audit.mutation?.outcomes.filter(outcome => outcome.applied) ?? [];
-    const stripped = new Set(applied.flatMap(outcome => ((outcome.result?.info?.stripped ?? []) as Array<{ index: number }>).map(entry => entry.index)));
+    const stripped = new Set(applied.flatMap(outcome => ((outcome.result?.info?.stripped ?? []) as Stripped[]).map(entry => entry.index)));
     // Absent when the quote check did not run or failed.
     const quotes = audit.validation.outcomes.find(outcome => outcome.interceptor === 'citation-quote-check')?.result?.info?.quotes as
         | Record<string, QuoteOutcome>

@@ -1,5 +1,6 @@
 // Terminal demo. Calls the `statistics` tool and prints what the host's
 // audit of each result found and delivered.
+import type { Stripped } from './citation-checks.ts';
 import { callAndAudit, closeHost, connect, MODES, startHost } from './host.ts';
 import type { MutationSummary, ValidationSummary } from './invoker.ts';
 import { CITATIONS_PATH, citationsOf, INTERCEPTORS_EXTENSION, type Citation, type CitedToolResult, type InterceptorOverrides } from './types.ts';
@@ -17,6 +18,16 @@ function row(interceptor: string, verdict: string, ...rest: string[]): string {
 function citationList(result: CitedToolResult): Citation[] {
     const citations = citationsOf(result);
     return Array.isArray(citations) ? (citations as Citation[]) : [];
+}
+
+/** "5 citations", or `none` for a result with no citations key. */
+function countOf(result: CitedToolResult, none = 'no citations in `_meta`'): string {
+    return citationsOf(result) === undefined ? none : `${citationList(result).length} citations`;
+}
+
+/** The result's text, indented behind a bar. */
+function quoted(result: CitedToolResult): string | undefined {
+    return result.content?.map(block => block.text?.trimEnd()).join('\n').replace(/^/gm, '    | ');
 }
 
 /** A path with the `_meta` prefix that every citation finding shares shortened. */
@@ -53,8 +64,7 @@ function printMutation(summary: MutationSummary): void {
         const result = outcome.result!;
         const verdict = !result.modified ? 'unchanged' : outcome.applied ? 'modified, applied' : 'modified, shadow';
         console.log(row(outcome.interceptor, verdict, ...policy));
-        const stripped = (result.info?.stripped ?? []) as Array<{ index: number; id?: string; name?: string; reasons: string[] }>;
-        for (const entry of stripped) {
+        for (const entry of (result.info?.stripped ?? []) as Stripped[]) {
             console.log(`      strip citations[${entry.index}] ${entry.id ?? entry.name ?? ''}`);
             for (const reason of entry.reasons) console.log(`          ${reason}`);
         }
@@ -78,8 +88,7 @@ for (const interceptor of host.interceptors) {
 async function run(title: string, topic: string, overrides: Record<string, InterceptorOverrides> = {}): Promise<void> {
     console.log(`\n=== ${title} ===`);
     const audit = await callAndAudit(host, 'statistics', { topic }, overrides);
-    const sent = citationsOf(audit.result) === undefined ? 'no citations' : `${citationList(audit.result).length} citations`;
-    console.log(`tools/call statistics(${topic}) returned ${sent} in ${CITATIONS_PATH}`);
+    console.log(`tools/call statistics(${topic}) returned ${countOf(audit.result, 'no citations')} in ${CITATIONS_PATH}`);
 
     console.log('validate:');
     printValidation(audit.validation);
@@ -95,9 +104,7 @@ async function run(title: string, topic: string, overrides: Record<string, Inter
     // Names are quoted because they contain commas.
     const kept = citationList(audit.delivered).map(citation => citation.id ?? (citation.name ? `"${citation.name}"` : '(no key)'));
     console.log(`DELIVERED with ${kept.length} citations${kept.length > 0 ? ` (${kept.join(', ')})` : ''}.`);
-    if (audit.mutation?.outcomes.some(outcome => outcome.applied)) {
-        console.log(audit.delivered.content?.map(block => block.text?.trimEnd()).join('\n').replace(/^/gm, '    | '));
-    }
+    if (audit.mutation?.outcomes.some(outcome => outcome.applied)) console.log(quoted(audit.delivered));
 }
 
 await run('1. Sound citations, server defaults (audit)', 'population');
@@ -113,9 +120,9 @@ for (const [policy, env] of [
 ] as const) {
     const plain = await connect('./portal-server.ts', {}, env);
     const result = (await plain.callTool({ name: 'statistics', arguments: { topic: 'population' } })) as CitedToolResult & { isError?: boolean };
-    const outcome = result.isError ? 'a tool error' : `the text and ${citationsOf(result) === undefined ? 'no citations in `_meta`' : `${citationList(result).length} citations`}`;
+    const outcome = result.isError ? 'a tool error' : `the text and ${countOf(result)}`;
     console.log(`${policy}: tools/call statistics(population) returned ${outcome}`);
-    if (result.isError) console.log(result.content?.map(block => block.text).join('\n').replace(/^/gm, '    | '));
+    if (result.isError) console.log(quoted(result));
     await plain.close();
 }
 
@@ -124,8 +131,8 @@ for (const mode of ['strip', 'block']) {
     const viaGateway = await connect('./gateway.ts', {}, { GATEWAY_MODE: mode });
     try {
         const result = (await viaGateway.callTool({ name: 'statistics', arguments: { topic: 'unemployment' } })) as CitedToolResult;
-        console.log(`GATEWAY_MODE=${mode}: delivered, ${citationsOf(result) === undefined ? 'no citations in `_meta`' : `${citationList(result).length} citations`}`);
-        console.log(result.content?.map(block => block.text?.trimEnd()).join('\n').replace(/^/gm, '    | '));
+        console.log(`GATEWAY_MODE=${mode}: delivered, ${countOf(result)}`);
+        console.log(quoted(result));
     } catch (error) {
         const { code, message } = error as { code?: number; message: string };
         console.log(`GATEWAY_MODE=${mode}: error ${code} ${message}`);

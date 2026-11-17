@@ -56,11 +56,11 @@ function citationLine(c: CitationRow): string {
 
 /** "audit · 2 passed, 3 flagged", each count in its status colour. */
 function summary({ Text }: Els, audit: AuditRecord) {
-  const mode = <Text dimColor>{audit.mode} · </Text>
-  if (audit.outcome === 'blocked') return [mode, <Text color="error">blocked ({audit.error?.code})</Text>]
-  if (audit.citations.length === 0) return [mode, <Text color="warning">no citations</Text>]
+  const prefix = <Text dimColor>{audit.mode} · </Text>
+  if (audit.outcome === 'blocked') return [prefix, <Text color="error">blocked ({audit.error?.code})</Text>]
+  if (audit.citations.length === 0) return [prefix, <Text color="warning">no citations</Text>]
   return [
-    mode,
+    prefix,
     ...tally(audit.citations).flatMap((part, i) => [...(i > 0 ? [<Text dimColor>, </Text>] : []), <Text color={COLOR[part.status]}>{part.text}</Text>]),
   ]
 }
@@ -214,6 +214,7 @@ export const register: Register = (on, options) => {
 
   on('tool.call', async ($, e, next) => {
     if (e.tool !== tool) return next(e)
+    // The event holds the tool's arguments beside the engine's own fields.
     const { tool: _tool, tool_use_id: id, agentId: _agent, requestMeta: _meta, ...args } = e as unknown as Record<string, unknown> & { tool_use_id: string }
     const current = await currentMode($, configured)
     const dir = String(options.demoDir || (await $.session.cwd()))
